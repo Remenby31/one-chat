@@ -25,7 +25,12 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:r.assistant-ui.com)",
       "Bash(curl -s \"https://r.assistant-ui.com/attachment.json\")",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(xcopy:*)",
+      "Bash(robocopy:*)",
+      "Read(//c/**)",
+      "mcp__shadcn__view_items_in_registries",
+      "Bash(curl -s \"https://r.assistant-ui.com/thread.json\")"
     ],
     "deny": [],
     "ask": []

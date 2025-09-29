@@ -6,10 +6,12 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown"
 import remarkGfm from "remark-gfm"
-import { FC, memo, useState } from "react"
+import { type FC, memo, useState } from "react"
 import { CheckIcon, CopyIcon } from "lucide-react"
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button"
 import { cn } from "@/lib/utils"
+import { SyntaxHighlighter } from "@/components/assistant-ui/shiki-highlighter"
+import { MermaidDiagram } from "@/components/assistant-ui/mermaid-diagram"
 
 type CodeHeaderProps = {
   language: string
@@ -22,6 +24,11 @@ const MarkdownTextImpl = () => {
       remarkPlugins={[remarkGfm]}
       className="aui-md"
       components={defaultComponents}
+      componentsByLanguage={{
+        mermaid: {
+          SyntaxHighlighter: MermaidDiagram
+        },
+      }}
     />
   )
 }
@@ -66,6 +73,7 @@ const useCopyToClipboard = ({
 }
 
 const defaultComponents = memoizeMarkdownComponents({
+  SyntaxHighlighter: SyntaxHighlighter,
   h1: ({ className, ...props }) => (
     <h1 className={cn("aui-md-h1", className)} {...props} />
   ),
@@ -129,5 +137,5 @@ const defaultComponents = memoizeMarkdownComponents({
       />
     )
   },
-  CodeHeader,
+  CodeHeader: CodeHeader as any,
 })

@@ -1,6 +1,6 @@
 "use client";
 
-import { PropsWithChildren, useEffect, useState, type FC } from "react";
+import { type PropsWithChildren, useState, type FC } from "react";
 import { XIcon, PlusIcon, FileText } from "lucide-react";
 import {
   AttachmentPrimitive,
@@ -56,7 +56,7 @@ const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
         </DialogTitle>
         <div className="aui-attachment-preview relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden bg-background">
           <AttachmentPrimitive.Content type="image">
-            {(image) => <AttachmentPreview src={image} />}
+            {(image: any) => <AttachmentPreview src={image} />}
           </AttachmentPrimitive.Content>
         </div>
       </DialogContent>
@@ -68,7 +68,7 @@ const AttachmentThumb: FC = () => {
   return (
     <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none">
       <AttachmentPrimitive.Content type="image">
-        {(src) => (
+        {(src: any) => (
           <AvatarImage
             src={src}
             alt="Attachment preview"
