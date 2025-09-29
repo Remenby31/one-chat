@@ -1,0 +1,28 @@
+{
+  "appId": "com.onechat.app",
+  "productName": "OneChat",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*"
+  ],
+  "mac": {
+    "category": "public.app-category.productivity",
+    "icon": "public/icon.icns"
+  },
+  "win": {
+    "target": "nsis",
+    "icon": "public/icon.ico"
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "public/icon.png",
+    "category": "Utility"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}
