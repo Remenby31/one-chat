@@ -17,7 +17,7 @@ export function useModelRuntime(modelConfig: ModelConfig | null) {
               index: 0,
               message: {
                 role: 'assistant',
-                content: 'Bienvenue dans OneChat! Pour commencer, configurez un modèle d\'IA en cliquant sur Paramètres dans la barre latérale.'
+                content: 'Welcome to OneChat! To get started, configure an AI model by clicking Settings in the sidebar.'
               },
               finish_reason: 'stop'
             }]
@@ -64,7 +64,7 @@ export function useModelRuntime(modelConfig: ModelConfig | null) {
               index: 0,
               message: {
                 role: 'assistant',
-                content: `Erreur lors de la connexion à l'API: ${error instanceof Error ? error.message : 'Erreur inconnue'}. Vérifiez vos paramètres dans la configuration du modèle.`
+                content: `Error connecting to API: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your model configuration settings.`
               },
               finish_reason: 'stop'
             }]

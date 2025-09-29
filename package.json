@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.32",
-    "@assistant-ui/react": "^0.11.12",
+    "@assistant-ui/react": "^0.11.21",
     "@assistant-ui/react-ai-sdk": "^1.1.0",
     "@assistant-ui/react-markdown": "^0.11.0",
     "@assistant-ui/styles": "^0.2.1",
@@ -39,10 +39,12 @@
     "clsx": "^2.1.1",
     "electron-store": "^10.1.0",
     "lucide-react": "^0.544.0",
+    "motion": "^12.23.22",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

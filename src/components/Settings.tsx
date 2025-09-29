@@ -99,16 +99,16 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Paramètres</DialogTitle>
+          <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Configurez vos modèles d'IA et les paramètres de l'application.
+            Configure your AI models and application settings.
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold mb-3">Thème</h3>
+              <h3 className="text-lg font-semibold mb-3">Theme</h3>
               <div className="flex gap-2">
                 <Button
                   variant={theme === "light" ? "default" : "outline"}
@@ -116,7 +116,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                   onClick={() => setTheme("light")}
                 >
                   <Sun className="h-4 w-4 mr-2" />
-                  Clair
+                  Light
                 </Button>
                 <Button
                   variant={theme === "dark" ? "default" : "outline"}
@@ -124,7 +124,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                   onClick={() => setTheme("dark")}
                 >
                   <Moon className="h-4 w-4 mr-2" />
-                  Sombre
+                  Dark
                 </Button>
                 <Button
                   variant={theme === "system" ? "default" : "outline"}
@@ -132,15 +132,15 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                   onClick={() => setTheme("system")}
                 >
                   <Monitor className="h-4 w-4 mr-2" />
-                  Système
+                  System
                 </Button>
               </div>
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold mb-3">Modèles configurés</h3>
+              <h3 className="text-lg font-semibold mb-3">Configured Models</h3>
               {models.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun modèle configuré</p>
+                <p className="text-sm text-muted-foreground">No models configured</p>
               ) : (
                 <div className="space-y-2">
                   {models.map((model) => (
@@ -173,20 +173,20 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold mb-3">Ajouter un modèle</h3>
+              <h3 className="text-lg font-semibold mb-3">Add a Model</h3>
               <div className="grid gap-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="name">Nom du modèle</Label>
+                    <Label htmlFor="name">Model Name</Label>
                     <Input
                       id="name"
                       value={newModel.name}
                       onChange={(e) => setNewModel({ ...newModel, name: e.target.value })}
-                      placeholder="Mon modèle OpenAI"
+                      placeholder="My OpenAI Model"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="model">Modèle</Label>
+                    <Label htmlFor="model">Model</Label>
                     <Input
                       id="model"
                       value={newModel.model}
@@ -196,7 +196,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="baseURL">URL de base de l'API</Label>
+                  <Label htmlFor="baseURL">API Base URL</Label>
                   <Input
                     id="baseURL"
                     value={newModel.baseURL}
@@ -205,7 +205,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="apiKey">Clé API</Label>
+                  <Label htmlFor="apiKey">API Key</Label>
                   <Input
                     id="apiKey"
                     type="password"
@@ -216,7 +216,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="temperature">Température</Label>
+                    <Label htmlFor="temperature">Temperature</Label>
                     <Input
                       id="temperature"
                       type="number"
@@ -228,7 +228,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="maxTokens">Tokens max</Label>
+                    <Label htmlFor="maxTokens">Max Tokens</Label>
                     <Input
                       id="maxTokens"
                       type="number"
@@ -241,7 +241,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
                 </div>
                 <Button onClick={handleAddModel} className="w-full">
                   <Plus className="h-4 w-4 mr-2" />
-                  Ajouter le modèle
+                  Add Model
                 </Button>
               </div>
             </div>
@@ -249,7 +249,7 @@ export function Settings({ open, onOpenChange, onModelChange }: SettingsProps) {
         </div>
 
         <DialogFooter>
-          <Button onClick={() => onOpenChange(false)}>Fermer</Button>
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -51,9 +51,9 @@ function App() {
           <div className="flex-1 flex flex-col">
             <div className="border-b px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Modèle:</span>
+                <span className="text-sm text-muted-foreground">Model:</span>
                 <span className="text-sm font-medium">
-                  {currentModel ? currentModel.name : "Non configuré"}
+                  {currentModel ? currentModel.name : "Not configured"}
                 </span>
               </div>
             </div>

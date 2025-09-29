@@ -21,6 +21,11 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { MarkdownText } from "@/components/assistant-ui/markdown-text"
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button"
+import {
+  ComposerAttachments,
+  ComposerAddAttachment,
+  UserMessageAttachments,
+} from "@/components/assistant-ui/attachment"
 
 export const Thread: FC = () => {
   return (
@@ -69,7 +74,7 @@ const ThreadWelcome: FC = () => {
       <div className="aui-thread-welcome-root">
         <div className="aui-thread-welcome-center">
           <p className="aui-thread-welcome-message">
-            Comment puis-je vous aider aujourd'hui?
+            How can I help you today?
           </p>
         </div>
         <ThreadWelcomeSuggestions />
@@ -83,22 +88,22 @@ const ThreadWelcomeSuggestions: FC = () => {
     <div className="aui-thread-welcome-suggestions">
       <ThreadPrimitive.Suggestion
         className="aui-thread-welcome-suggestion"
-        prompt="Qu'est-ce que OneChat?"
+        prompt="What is OneChat?"
         method="replace"
         autoSend
       >
         <span className="aui-thread-welcome-suggestion-text">
-          Qu'est-ce que OneChat?
+          What is OneChat?
         </span>
       </ThreadPrimitive.Suggestion>
       <ThreadPrimitive.Suggestion
         className="aui-thread-welcome-suggestion"
-        prompt="Comment configurer un modèle?"
+        prompt="How to configure a model?"
         method="replace"
         autoSend
       >
         <span className="aui-thread-welcome-suggestion-text">
-          Comment configurer un modèle?
+          How to configure a model?
         </span>
       </ThreadPrimitive.Suggestion>
     </div>
@@ -108,13 +113,17 @@ const ThreadWelcomeSuggestions: FC = () => {
 const Composer: FC = () => {
   return (
     <ComposerPrimitive.Root className="aui-composer-root">
-      <ComposerPrimitive.Input
-        rows={1}
-        autoFocus
-        placeholder="Écrivez un message..."
-        className="aui-composer-input"
-      />
-      <ComposerAction />
+      <ComposerAttachments />
+      <div className="aui-composer-input-row">
+        <ComposerAddAttachment />
+        <ComposerPrimitive.Input
+          rows={1}
+          autoFocus
+          placeholder="Write a message..."
+          className="aui-composer-input"
+        />
+        <ComposerAction />
+      </div>
     </ComposerPrimitive.Root>
   )
 }
@@ -125,7 +134,7 @@ const ComposerAction: FC = () => {
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Send asChild>
           <TooltipIconButton
-            tooltip="Envoyer"
+            tooltip="Send"
             variant="default"
             className="aui-composer-send"
           >
@@ -136,7 +145,7 @@ const ComposerAction: FC = () => {
       <ThreadPrimitive.If running>
         <ComposerPrimitive.Cancel asChild>
           <TooltipIconButton
-            tooltip="Arrêter"
+            tooltip="Stop"
             variant="default"
             className="aui-composer-cancel"
           >
@@ -152,6 +161,7 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root className="aui-user-message-root">
       <UserActionBar />
+      <UserMessageAttachments />
       <div className="aui-user-message-content">
         <MessagePrimitive.Parts />
       </div>
@@ -168,7 +178,7 @@ const UserActionBar: FC = () => {
       className="aui-user-action-bar-root"
     >
       <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Modifier">
+        <TooltipIconButton tooltip="Edit">
           <PencilIcon className="h-4 w-4" />
         </TooltipIconButton>
       </ActionBarPrimitive.Edit>
@@ -182,10 +192,10 @@ const EditComposer: FC = () => {
       <ComposerPrimitive.Input className="aui-edit-composer-input" />
       <div className="aui-edit-composer-footer">
         <ComposerPrimitive.Cancel asChild>
-          <Button variant="ghost">Annuler</Button>
+          <Button variant="ghost">Cancel</Button>
         </ComposerPrimitive.Cancel>
         <ComposerPrimitive.Send asChild>
-          <Button>Envoyer</Button>
+          <Button>Send</Button>
         </ComposerPrimitive.Send>
       </div>
     </ComposerPrimitive.Root>
@@ -213,7 +223,7 @@ const AssistantActionBar: FC = () => {
       className="aui-assistant-action-bar-root"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copier">
+        <TooltipIconButton tooltip="Copy">
           <MessagePrimitive.If copied>
             <CheckIcon className="h-4 w-4" />
           </MessagePrimitive.If>
@@ -223,7 +233,7 @@ const AssistantActionBar: FC = () => {
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Régénérer">
+        <TooltipIconButton tooltip="Regenerate">
           <RefreshCwIcon className="h-4 w-4" />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
@@ -242,7 +252,7 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
       {...rest}
     >
       <BranchPickerPrimitive.Previous asChild>
-        <TooltipIconButton tooltip="Précédent">
+        <TooltipIconButton tooltip="Previous">
           <ChevronLeftIcon className="h-4 w-4" />
         </TooltipIconButton>
       </BranchPickerPrimitive.Previous>
@@ -250,7 +260,7 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
         <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
       </span>
       <BranchPickerPrimitive.Next asChild>
-        <TooltipIconButton tooltip="Suivant">
+        <TooltipIconButton tooltip="Next">
           <ChevronRightIcon className="h-4 w-4" />
         </TooltipIconButton>
       </BranchPickerPrimitive.Next>

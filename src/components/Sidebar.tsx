@@ -37,7 +37,7 @@ export const Sidebar: FC<SidebarProps> = ({ onSettingsClick, onNewChat }) => {
       </div>
 
       {!isCollapsed && (
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
           <ThreadList />
         </div>
       )}
@@ -63,7 +63,7 @@ export const Sidebar: FC<SidebarProps> = ({ onSettingsClick, onNewChat }) => {
           className={cn("w-full", !isCollapsed && "justify-start")}
         >
           <Settings className="h-5 w-5" />
-          {!isCollapsed && <span className="ml-2">Paramètres</span>}
+          {!isCollapsed && <span className="ml-2">Settings</span>}
         </Button>
       </div>
     </div>

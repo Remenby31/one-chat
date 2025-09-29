@@ -13,7 +13,19 @@
       "Bash(npm run build:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(npx shadcn@latest add \"https://r.assistant-ui.com/attachment\")",
+      "Bash(npx shadcn@latest add \"https://r.assistant-ui.com/attachment\" --yes)",
+      "WebFetch(domain:assistant-ui.com)",
+      "mcp__assistant-ui__assistantUIDocs",
+      "mcp__assistant-ui__assistantUIExamples",
+      "WebSearch",
+      "WebFetch(domain:www.assistant-ui.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:r.assistant-ui.com)",
+      "Bash(curl -s \"https://r.assistant-ui.com/attachment.json\")",
+      "Bash(npx shadcn@latest add:*)"
     ],
     "deny": [],
     "ask": []
