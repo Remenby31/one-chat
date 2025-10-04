@@ -32,7 +32,7 @@ const AssistantModalButton = forwardRef<
   HTMLButtonElement,
   AssistantModalButtonProps
 >(({ "data-state": state, ...rest }, ref) => {
-  const tooltip = state === "open" ? "Fermer l'assistant" : "Ouvrir l'assistant";
+  const tooltip = state === "open" ? "Close assistant" : "Open assistant";
 
   return (
     <TooltipIconButton

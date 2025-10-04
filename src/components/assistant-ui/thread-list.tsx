@@ -3,7 +3,7 @@ import {
   ThreadListItemPrimitive,
   ThreadListPrimitive,
 } from "@assistant-ui/react"
-import { ArchiveIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { PlusIcon, Trash2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button"
 
@@ -21,7 +21,7 @@ const ThreadListNew: FC = () => {
     <ThreadListPrimitive.New asChild>
       <Button className="aui-thread-list-new w-full" variant="ghost">
         <PlusIcon className="h-4 w-4 mr-2" />
-        Nouvelle conversation
+        New conversation
       </Button>
     </ThreadListPrimitive.New>
   )
@@ -45,7 +45,7 @@ const ThreadListItem: FC = () => {
 const ThreadListItemTitle: FC = () => {
   return (
     <p className="aui-thread-list-item-title">
-      <ThreadListItemPrimitive.Title fallback="Nouvelle conversation" />
+      <ThreadListItemPrimitive.Title fallback="New conversation" />
     </p>
   )
 }
@@ -53,20 +53,11 @@ const ThreadListItemTitle: FC = () => {
 const ThreadListItemActions: FC = () => {
   return (
     <div className="flex gap-1">
-      <ThreadListItemPrimitive.Archive asChild>
-        <TooltipIconButton
-          className="aui-thread-list-item-archive"
-          variant="ghost"
-          tooltip="Archiver"
-        >
-          <ArchiveIcon className="h-4 w-4" />
-        </TooltipIconButton>
-      </ThreadListItemPrimitive.Archive>
       <ThreadListItemPrimitive.Delete asChild>
         <TooltipIconButton
           className="aui-thread-list-item-delete"
           variant="ghost"
-          tooltip="Supprimer"
+          tooltip="Delete"
         >
           <Trash2Icon className="h-4 w-4" />
         </TooltipIconButton>

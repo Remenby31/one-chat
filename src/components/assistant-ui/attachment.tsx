@@ -1,6 +1,6 @@
 "use client";
 
-import { type PropsWithChildren, useState, type FC } from "react";
+import { type PropsWithChildren, type FC } from "react";
 import { XIcon, PlusIcon, FileText } from "lucide-react";
 import {
   AttachmentPrimitive,
@@ -18,28 +18,29 @@ import {
   DialogContent,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 
-type AttachmentPreviewProps = {
-  src: string;
-};
-
-const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-  return (
-    <img
-      src={src}
-      alt="Image Preview"
-      className={
-        isLoaded
-          ? "aui-attachment-preview-image-loaded block h-auto max-h-[80vh] w-auto max-w-full object-contain"
-          : "aui-attachment-preview-image-loading hidden"
-      }
-      onLoad={() => setIsLoaded(true)}
-    />
-  );
-};
+// TODO: Restore when AttachmentPrimitive.Content API is fixed
+// type AttachmentPreviewProps = {
+//   src: string;
+// };
+//
+// const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
+//   const [isLoaded, setIsLoaded] = useState(false);
+//   return (
+//     <img
+//       src={src}
+//       alt="Image Preview"
+//       className={
+//         isLoaded
+//           ? "aui-attachment-preview-image-loaded block h-auto max-h-[80vh] w-auto max-w-full object-contain"
+//           : "aui-attachment-preview-image-loading hidden"
+//       }
+//       onLoad={() => setIsLoaded(true)}
+//     />
+//   );
+// };
 
 const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
   return (
@@ -55,9 +56,8 @@ const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
           Image Attachment Preview
         </DialogTitle>
         <div className="aui-attachment-preview relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden bg-background">
-          <AttachmentPrimitive.Content type="image">
-            {(image: any) => <AttachmentPreview src={image} />}
-          </AttachmentPrimitive.Content>
+          {/* TODO: Fix AttachmentPrimitive.Content API */}
+          <div>Attachment preview unavailable</div>
         </div>
       </DialogContent>
     </Dialog>
@@ -67,15 +67,7 @@ const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
 const AttachmentThumb: FC = () => {
   return (
     <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none">
-      <AttachmentPrimitive.Content type="image">
-        {(src: any) => (
-          <AvatarImage
-            src={src}
-            alt="Attachment preview"
-            className="aui-attachment-tile-image object-cover"
-          />
-        )}
-      </AttachmentPrimitive.Content>
+      {/* TODO: Fix AttachmentPrimitive.Content API */}
       <AvatarFallback delayMs={200}>
         <FileText className="aui-attachment-tile-fallback-icon size-8 text-muted-foreground" />
       </AvatarFallback>

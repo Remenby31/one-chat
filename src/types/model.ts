@@ -1,8 +1,7 @@
 export interface ModelConfig {
   id: string
   name: string
-  baseURL: string
-  apiKey: string
+  apiKeyId: string  // Reference to endpoint (formerly API key)
   model: string
   maxTokens?: number
   temperature?: number

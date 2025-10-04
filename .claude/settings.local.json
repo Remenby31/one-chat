@@ -30,7 +30,9 @@
       "Bash(robocopy:*)",
       "Read(//c/**)",
       "mcp__shadcn__view_items_in_registries",
-      "Bash(curl -s \"https://r.assistant-ui.com/thread.json\")"
+      "Bash(curl -s \"https://r.assistant-ui.com/thread.json\")",
+      "mcp__shadcn__get_item_examples_from_registries",
+      "Bash(npm run electron:dev:*)"
     ],
     "deny": [],
     "ask": []
