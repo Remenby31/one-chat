@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { SlimButton } from "@/components/ui/slim-button"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
@@ -17,16 +18,25 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FormField } from "@/components/ui/form-field"
-import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign } from "lucide-react"
+import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown } from "lucide-react"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import type { ModelConfig } from "@/types/model"
 import type { ApiKey } from "@/types/apiKey"
-import { detectProvider } from "@/types/apiKey"
+import { detectProvider, getProviderIcon } from "@/types/apiKey"
 import { useTheme } from "@/components/ThemeProvider"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface SettingsProps {
   open: boolean
@@ -49,6 +59,10 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
   const [showAddModelDialog, setShowAddModelDialog] = useState(false)
   const [showAddApiKeyDialog, setShowAddApiKeyDialog] = useState(false)
   const [envVars, setEnvVars] = useState<Record<string, string>>({})
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [openModelCombobox, setOpenModelCombobox] = useState(false)
 
   // Load models and API keys from storage on mount
   useEffect(() => {
@@ -103,6 +117,68 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
     loadEnvVars()
   }, [showAddApiKeyDialog])
 
+  // Preload first endpoint when Add Model dialog opens
+  useEffect(() => {
+    if (showAddModelDialog && apiKeys.length > 0 && !newModel.apiKeyId) {
+      setNewModel({ ...newModel, apiKeyId: apiKeys[0].id })
+    }
+  }, [showAddModelDialog])
+
+  // Fetch available models when endpoint changes
+  useEffect(() => {
+    const fetchModels = async () => {
+      if (!newModel.apiKeyId) {
+        setAvailableModels([])
+        return
+      }
+
+      const selectedApiKey = apiKeys.find(k => k.id === newModel.apiKeyId)
+      if (!selectedApiKey) return
+
+      setLoadingModels(true)
+      try {
+        if (window.electronAPI) {
+          // Use Electron IPC to fetch models (bypasses CSP)
+          const result = await window.electronAPI.fetchModels(selectedApiKey.baseURL, selectedApiKey.key)
+          if (result.success && result.models) {
+            setAvailableModels(result.models)
+          } else {
+            console.error('Failed to fetch models:', result.error)
+            setAvailableModels([])
+          }
+        } else {
+          // Fallback for web/dev mode - skip if env var
+          if (selectedApiKey.key.startsWith('$')) {
+            setAvailableModels([])
+            return
+          }
+
+          const response = await fetch(`${selectedApiKey.baseURL}/models`, {
+            headers: {
+              'Authorization': `Bearer ${selectedApiKey.key}`,
+              'Content-Type': 'application/json'
+            }
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            if (data.data && Array.isArray(data.data)) {
+              const modelIds = data.data.map((m: any) => m.id)
+              setAvailableModels(modelIds)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch models:', error)
+        setAvailableModels([])
+      } finally {
+        setLoadingModels(false)
+      }
+    }
+
+    fetchModels()
+  }, [newModel.apiKeyId, apiKeys])
+
   // Save models to storage
   const saveModels = async (updatedModels: ModelConfig[]) => {
     if (window.electronAPI) {
@@ -139,14 +215,21 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
   }
 
   // Handle API key change and auto-detect provider
-  const handleApiKeyChange = (key: string) => {
-    setNewApiKey({ ...newApiKey, key })
+  const handleApiKeyChange = (key: string, envVarName?: string) => {
+    const updates: Partial<typeof newApiKey> = { key }
+
+    // Auto-fill name from environment variable name if provided and name is empty
+    if (envVarName && !newApiKey.name) {
+      updates.name = envVarName
+    }
 
     // Auto-detect provider and set base URL
     const provider = detectProvider(key)
     if (provider && !newApiKey.baseURL) {
-      setNewApiKey({ ...newApiKey, key, baseURL: provider.baseURL })
+      updates.baseURL = provider.baseURL
     }
+
+    setNewApiKey({ ...newApiKey, ...updates })
   }
 
   const handleDeleteApiKey = (id: string) => {
@@ -275,10 +358,9 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[600px] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="px-6 py-4 border-b">
-          <DialogTitle className="text-lg font-semibold">Settings</DialogTitle>
+        <DialogHeader className="sr-only">
+          <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
-
         <Tabs defaultValue="models" className="flex-1 flex overflow-hidden">
           <TabsList className="w-48 flex flex-col items-stretch justify-start border-r bg-transparent p-4 h-auto gap-1">
             <TabsTrigger
@@ -307,7 +389,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="models" className="flex-1 overflow-y-auto mt-0 p-6 space-y-4">
+          <TabsContent value="models" className="flex-1 overflow-y-auto mt-0 pt-8 px-6 pb-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Your Models</h3>
               <SlimButton onClick={() => setShowAddModelDialog(true)} size="sm">
@@ -369,7 +451,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
             )}
           </TabsContent>
 
-          <TabsContent value="apikeys" className="flex-1 overflow-y-auto mt-0 p-6 space-y-4">
+          <TabsContent value="apikeys" className="flex-1 overflow-y-auto mt-0 pt-8 px-6 pb-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Your Endpoints</h3>
               <SlimButton onClick={() => setShowAddApiKeyDialog(true)} size="sm">
@@ -388,38 +470,49 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
               </div>
             ) : (
               <div className="space-y-2">
-                {apiKeys.map((apiKey) => (
-                  <div
-                    key={apiKey.id}
-                    className="group relative rounded-lg border p-4 transition-colors hover:border-primary/50"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Key className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <div className="font-semibold">{apiKey.name}</div>
-                          <div className="text-xs text-muted-foreground">{apiKey.baseURL}</div>
-                          <div className="text-sm text-muted-foreground font-mono">
-                            {apiKey.key.slice(0, 20)}...
+                {apiKeys.map((apiKey) => {
+                  const providerIcon = getProviderIcon(apiKey.baseURL)
+                  return (
+                    <div
+                      key={apiKey.id}
+                      className="group relative rounded-lg border p-4 transition-colors hover:border-primary/50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {providerIcon ? (
+                            <img
+                              src={`/icons/${providerIcon}.svg`}
+                              alt={apiKey.name}
+                              className="h-5 w-5 dark:invert"
+                            />
+                          ) : (
+                            <Key className="h-5 w-5 text-muted-foreground" />
+                          )}
+                          <div>
+                            <div className="font-semibold">{apiKey.name}</div>
+                            <div className="text-xs text-muted-foreground">{apiKey.baseURL}</div>
+                            <div className="text-sm text-muted-foreground font-mono">
+                              {apiKey.key.slice(0, 20)}...
+                            </div>
                           </div>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleDeleteApiKey(apiKey.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteApiKey(apiKey.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="appearance" className="flex-1 overflow-y-auto mt-0 p-6 space-y-6">
+          <TabsContent value="appearance" className="flex-1 overflow-y-auto mt-0 pt-8 px-6 pb-6 space-y-6">
             <div className="space-y-3">
               <h3 className="text-sm font-semibold">Theme</h3>
 
@@ -472,7 +565,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
             </div>
           </TabsContent>
 
-          <TabsContent value="backup" className="flex-1 overflow-y-auto mt-0 p-6 space-y-6">
+          <TabsContent value="backup" className="flex-1 overflow-y-auto mt-0 pt-8 px-6 pb-6 space-y-6">
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-semibold mb-2">Export Configuration</h3>
@@ -508,22 +601,13 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                label="Display Name"
-                id="name"
-                value={newModel.name}
-                onChange={(e) => setNewModel({ ...newModel, name: e.target.value })}
-                placeholder="e.g., My GPT-4"
-              />
-              <FormField
-                label="Model ID"
-                id="model"
-                value={newModel.model}
-                onChange={(e) => setNewModel({ ...newModel, model: e.target.value })}
-                placeholder="e.g., gpt-4"
-              />
-            </div>
+            <FormField
+              label="Display Name"
+              id="name"
+              value={newModel.name}
+              onChange={(e) => setNewModel({ ...newModel, name: e.target.value })}
+              placeholder="e.g., My GPT-4"
+            />
 
             <div>
               <Label htmlFor="apiKey" className="text-sm font-medium block mb-3">Endpoint</Label>
@@ -558,6 +642,79 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
               </Select>
             </div>
 
+            <div>
+              <Label htmlFor="model" className="text-sm font-medium block mb-3">Model ID</Label>
+              <Popover open={openModelCombobox} onOpenChange={setOpenModelCombobox}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={openModelCombobox}
+                    className="w-full h-8 justify-between font-normal"
+                  >
+                    <span className="truncate">{newModel.model || "Select or type a model..."}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="p-0"
+                  align="start"
+                  style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '400px' }}
+                  collisionPadding={8}
+                >
+                  <Command shouldFilter={false} className="w-full">
+                    <CommandInput
+                      placeholder="Search or type model ID..."
+                      value={newModel.model}
+                      onValueChange={(value) => setNewModel({ ...newModel, model: value })}
+                    />
+                    <div
+                      className="h-[300px] overflow-y-scroll overflow-x-hidden border-t"
+                      style={{
+                        overscrollBehavior: 'contain',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: 'hsl(var(--border)) transparent'
+                      }}
+                      onWheelCapture={(e) => {
+                        e.stopPropagation()
+                      }}
+                    >
+                      {loadingModels ? (
+                        <div className="py-6 text-center text-sm">Loading models...</div>
+                      ) : availableModels.length > 0 ? (
+                        <div className="p-1">
+                          {availableModels
+                            .filter((modelId) =>
+                              !newModel.model ||
+                              modelId.toLowerCase().includes(newModel.model.toLowerCase())
+                            )
+                            .map((modelId) => (
+                              <button
+                                key={modelId}
+                                onClick={() => {
+                                  setNewModel({ ...newModel, model: modelId })
+                                  setOpenModelCombobox(false)
+                                }}
+                                className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                              >
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    newModel.model === modelId ? "opacity-100" : "opacity-0"
+                                  }`}
+                                />
+                                {modelId}
+                              </button>
+                            ))}
+                        </div>
+                      ) : (
+                        <div className="py-6 text-center text-sm">Type custom model ID (e.g., gpt-4)</div>
+                      )}
+                    </div>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
             <SlimButton onClick={handleAddModel} className="w-full">
               <Plus className="h-4 w-4 mr-2" />
               Add Model
@@ -582,22 +739,30 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
               placeholder="e.g., OpenAI Production"
             />
 
-            <div className="space-y-2">
+            <div>
+              <Label htmlFor="keyValue" className="text-sm font-medium block mb-3">API Key</Label>
               <div className="flex gap-2">
-                <div className="flex-1">
-                  <FormField
-                    label="API Key"
+                <div className="relative flex-1">
+                  <Input
                     id="keyValue"
-                    type="password"
+                    type={showApiKey ? "text" : "password"}
                     value={newApiKey.key}
                     onChange={(e) => handleApiKeyChange(e.target.value)}
                     placeholder="sk-... or $ENV_VAR_NAME"
+                    className="h-8 pr-9"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
                 {window.electronAPI && (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <SlimButton variant="outline" className="mt-6 h-8 w-8 p-0" title="Select environment variable">
+                      <SlimButton variant="outline" className="h-8 w-8 p-0" title="Select environment variable">
                         <DollarSign className="h-4 w-4" />
                       </SlimButton>
                     </PopoverTrigger>
@@ -611,7 +776,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
                             {Object.entries(envVars).map(([key, value]) => (
                               <button
                                 key={key}
-                                onClick={() => handleApiKeyChange(`$${key}`)}
+                                onClick={() => handleApiKeyChange(value, key)}
                                 className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                               >
                                 <div className="font-mono font-medium">${key}</div>
@@ -625,9 +790,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate }: 
                   </Popover>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Enter the key directly or use $ENV_VAR_NAME to read from environment variables
-              </p>
             </div>
 
             <FormField

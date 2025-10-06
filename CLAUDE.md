@@ -102,3 +102,4 @@ These servers provide tools for component discovery and integration.
 - The app uses OpenAI-compatible API format, supporting any provider with compatible endpoints
 - English localization is used in UI strings
 - Fallback to localStorage when running in browser/dev mode without Electron
+- Do not launch app, the user will do that

@@ -13,10 +13,12 @@ function createWindow() {
     height: 800,
     minWidth: 600,
     minHeight: 400,
+    icon: path.join(__dirname, '../public/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      devTools: true // Explicitly enable DevTools
     },
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 10, y: 10 },
@@ -24,8 +26,47 @@ function createWindow() {
     show: false
   });
 
-  // Remove the menu bar
-  Menu.setApplicationMenu(null);
+  // Create custom menu
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Quit',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+          click: () => app.quit()
+        }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: 'F12',
+          click: () => mainWindow?.webContents.toggleDevTools()
+        },
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I',
+          click: () => mainWindow?.webContents.toggleDevTools(),
+          visible: false // Hide this duplicate menu item
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -33,7 +74,7 @@ function createWindow() {
 
   // Development vs Production
   if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5174');
+    mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -210,11 +251,50 @@ ipcMain.handle('env:list', async () => {
   const relevantPrefixes = ['OPENAI', 'ANTHROPIC', 'API', 'KEY', 'TOKEN', 'GOOGLE', 'AZURE', 'AWS', 'GROQ', 'COHERE', 'MISTRAL', 'HUGGINGFACE', 'HF', 'GEMINI'];
   const envVars: Record<string, string> = {};
 
+  console.log('DEBUG: All process.env keys:', Object.keys(process.env));
+  console.log('DEBUG: Looking for keys matching:', relevantPrefixes);
+
   for (const [key, value] of Object.entries(process.env)) {
     if (value && relevantPrefixes.some(prefix => key.toUpperCase().includes(prefix))) {
+      console.log('DEBUG: Found matching env var:', key);
       envVars[key] = value;
     }
   }
 
+  console.log('DEBUG: Returning env vars:', Object.keys(envVars));
   return envVars;
+});
+
+// Fetch models from API endpoint
+ipcMain.handle('api:fetch-models', async (_event, baseURL: string, apiKey: string) => {
+  try {
+    // Resolve environment variable if needed
+    let resolvedApiKey = apiKey;
+    if (apiKey.startsWith('$')) {
+      const envVarName = apiKey.slice(1);
+      resolvedApiKey = process.env[envVarName] || apiKey;
+    }
+
+    const response = await fetch(`${baseURL}/models`, {
+      headers: {
+        'Authorization': `Bearer ${resolvedApiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    // OpenAI format: { data: [{ id: "gpt-4", ... }] }
+    if (data.data && Array.isArray(data.data)) {
+      return { success: true, models: data.data.map((m: any) => m.id) };
+    }
+
+    return { success: false, error: 'Invalid response format' };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
 });

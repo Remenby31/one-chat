@@ -12,4 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Environment variable resolution
   resolveEnvVar: (value: string) => ipcRenderer.invoke('env:resolve', value),
   getEnvVars: () => ipcRenderer.invoke('env:list'),
+
+  // API operations
+  fetchModels: (baseURL: string, apiKey: string) => ipcRenderer.invoke('api:fetch-models', baseURL, apiKey),
 });

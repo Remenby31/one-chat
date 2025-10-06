@@ -13,12 +13,17 @@ export default defineConfig({
       formats: ['cjs'],
     },
     rollupOptions: {
-      external: ['electron', 'path', 'fs', 'url'],
+      external: ['electron', 'path', 'fs', 'fs/promises', 'url', 'child_process'],
       output: {
         entryFileNames: '[name].js',
       },
     },
     emptyOutDir: true,
     minify: process.env.NODE_ENV === 'production',
+    ssr: true,
+  },
+  resolve: {
+    browserField: false,
+    mainFields: ['module', 'jsnext:main', 'jsnext'],
   },
 })

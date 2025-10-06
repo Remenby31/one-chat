@@ -8,6 +8,7 @@ interface ElectronAPI {
   importConfig: () => Promise<{ success: boolean; config?: any; canceled?: boolean; error?: string }>
   resolveEnvVar: (value: string) => Promise<string>
   getEnvVars: () => Promise<Record<string, string>>
+  fetchModels: (baseURL: string, apiKey: string) => Promise<{ success: boolean; models?: string[]; error?: string }>
 }
 
 interface Window {

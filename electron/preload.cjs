@@ -2,23 +2,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
-  
-  // Model management
-  saveModel: (model) => ipcRenderer.invoke('models:save', model),
-  loadModels: () => ipcRenderer.invoke('models:load'),
-  deleteModel: (id) => ipcRenderer.invoke('models:delete', id),
-  
-  // Conversations
-  saveConversation: (conversation) => ipcRenderer.invoke('conversation:save', conversation),
-  loadConversations: () => ipcRenderer.invoke('conversation:load'),
-  deleteConversation: (id) => ipcRenderer.invoke('conversation:delete', id),
-  
-  // MCP
-  connectMCP: (config) => ipcRenderer.invoke('mcp:connect', config),
-  disconnectMCP: (id) => ipcRenderer.invoke('mcp:disconnect', id),
-  getMCPTools: (id) => ipcRenderer.invoke('mcp:get-tools', id),
-  
-  // Settings
-  saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
-  loadSettings: () => ipcRenderer.invoke('settings:load'),
+
+  // Config file operations
+  readConfig: (filename) => ipcRenderer.invoke('config:read', filename),
+  writeConfig: (filename, data) => ipcRenderer.invoke('config:write', filename, data),
+  exportConfig: () => ipcRenderer.invoke('config:export'),
+  importConfig: () => ipcRenderer.invoke('config:import'),
+
+  // Environment variable resolution
+  resolveEnvVar: (value) => ipcRenderer.invoke('env:resolve', value),
+  getEnvVars: () => ipcRenderer.invoke('env:list'),
+
+  // API operations
+  fetchModels: (baseURL, apiKey) => ipcRenderer.invoke('api:fetch-models', baseURL, apiKey),
 });

@@ -32,7 +32,22 @@
       "mcp__shadcn__view_items_in_registries",
       "Bash(curl -s \"https://r.assistant-ui.com/thread.json\")",
       "mcp__shadcn__get_item_examples_from_registries",
-      "Bash(npm run electron:dev:*)"
+      "Bash(npm run electron:dev:*)",
+      "Bash(npx vite build:*)",
+      "Bash(vite build:*)",
+      "Bash(Get-ChildItem Env:)",
+      "Bash(Select-Object Name,Value)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(env)",
+      "Bash(where convert magick)",
+      "Bash(node:*)",
+      "Bash(move:*)",
+      "Bash(ren:*)",
+      "Bash(timeout 10 bash -c 'while true; do sleep 1; done')",
+      "WebFetch(domain:lobehub.com)",
+      "WebFetch(domain:icons.lobehub.com)",
+      "Bash(curl:*)",
+      "Bash(npm run electron:build:*)"
     ],
     "deny": [],
     "ask": []

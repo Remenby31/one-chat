@@ -6,8 +6,12 @@
   },
   "files": [
     "dist/**/*",
-    "dist-electron/**/*"
+    "dist-electron/**/*",
+    "electron/**/*"
   ],
+  "asarUnpack": [],
+  "npmRebuild": false,
+  "buildDependenciesFromSource": false,
   "mac": {
     "category": "public.app-category.productivity",
     "icon": "public/icon.icns"
