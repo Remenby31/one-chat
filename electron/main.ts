@@ -8,6 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  const preloadPath = path.join(__dirname, 'preload.js');
+  console.log('[main.ts] Loading preload from:', preloadPath);
+  console.log('[main.ts] __dirname:', __dirname);
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -15,7 +19,7 @@ function createWindow() {
     minHeight: 400,
     icon: path.join(__dirname, '../public/icon.png'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       devTools: true // Explicitly enable DevTools
@@ -295,6 +299,67 @@ ipcMain.handle('api:fetch-models', async (_event, baseURL: string, apiKey: strin
 
     return { success: false, error: 'Invalid response format' };
   } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Chat completion API call
+ipcMain.handle('api:chat-completion', async (_event, baseURL: string, apiKey: string, body: any) => {
+  console.log('[main.ts] chat-completion called', { baseURL, body })
+  try {
+    // Resolve environment variable if needed
+    let resolvedApiKey = apiKey;
+    if (apiKey.startsWith('$')) {
+      const envVarName = apiKey.slice(1);
+      resolvedApiKey = process.env[envVarName] || apiKey;
+    }
+
+    console.log('[main.ts] Making fetch request')
+    const response = await fetch(`${baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resolvedApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    console.log('[main.ts] Response status:', response.status)
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[main.ts] API error:', errorText)
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    // Return the response as a readable stream
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    // Read and forward the stream
+    console.log('[main.ts] Reading stream chunks')
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    // Combine chunks and convert to string
+    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const text = new TextDecoder().decode(combined);
+    console.log('[main.ts] Stream complete, text length:', text.length)
+    return { success: true, data: text };
+  } catch (error: any) {
+    console.error('[main.ts] Error in chat-completion:', error)
     return { success: false, error: error.message };
   }
 });

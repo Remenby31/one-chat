@@ -15,4 +15,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // API operations
   fetchModels: (baseURL, apiKey) => ipcRenderer.invoke('api:fetch-models', baseURL, apiKey),
+  chatCompletion: (baseURL, apiKey, body) => ipcRenderer.invoke('api:chat-completion', baseURL, apiKey, body),
 });

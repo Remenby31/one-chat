@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-contextBridge.exposeInMainWorld('electronAPI', {
+const electronAPI = {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
 
   // Config file operations
@@ -15,4 +15,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // API operations
   fetchModels: (baseURL: string, apiKey: string) => ipcRenderer.invoke('api:fetch-models', baseURL, apiKey),
-});
+  chatCompletion: (baseURL: string, apiKey: string, body: any) => ipcRenderer.invoke('api:chat-completion', baseURL, apiKey, body),
+};
+
+console.log('[preload.ts] Exposing electronAPI with methods:', Object.keys(electronAPI));
+console.log('[preload.ts] chatCompletion exists?', typeof electronAPI.chatCompletion);
+
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);

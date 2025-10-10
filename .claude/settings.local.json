@@ -47,7 +47,8 @@
       "WebFetch(domain:lobehub.com)",
       "WebFetch(domain:icons.lobehub.com)",
       "Bash(curl:*)",
-      "Bash(npm run electron:build:*)"
+      "Bash(npm run electron:build:*)",
+      "Bash(timeout 60 bash -c 'while true; do sleep 1; done')"
     ],
     "deny": [],
     "ask": []

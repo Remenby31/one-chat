@@ -307,3 +307,64 @@ ipcMain.handle('api:fetch-models', async (_event, baseURL, apiKey) => {
     return { success: false, error: error.message };
   }
 });
+
+// Chat completion API call
+ipcMain.handle('api:chat-completion', async (_event, baseURL, apiKey, body) => {
+  console.log('[main.cjs] chat-completion called', { baseURL, body });
+  try {
+    // Resolve environment variable if needed
+    let resolvedApiKey = apiKey;
+    if (apiKey.startsWith('$')) {
+      const envVarName = apiKey.slice(1);
+      resolvedApiKey = process.env[envVarName] || apiKey;
+    }
+
+    console.log('[main.cjs] Making fetch request');
+    const response = await fetch(`${baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resolvedApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    console.log('[main.cjs] Response status:', response.status);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[main.cjs] API error:', errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    // Return the response as a readable stream
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    // Read and forward the stream
+    console.log('[main.cjs] Reading stream chunks');
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    // Combine chunks and convert to string
+    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const text = new TextDecoder().decode(combined);
+    console.log('[main.cjs] Stream complete, text length:', text.length);
+    return { success: true, data: text };
+  } catch (error) {
+    console.error('[main.cjs] Error in chat-completion:', error);
+    return { success: false, error: error.message };
+  }
+});

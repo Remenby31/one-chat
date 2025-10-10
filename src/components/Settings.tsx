@@ -21,11 +21,7 @@ import { FormField } from "@/components/ui/form-field"
 import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown } from "lucide-react"
 import {
   Command,
-  CommandEmpty,
-  CommandGroup,
   CommandInput,
-  CommandItem,
-  CommandList,
 } from "@/components/ui/command"
 import type { ModelConfig } from "@/types/model"
 import type { ApiKey } from "@/types/apiKey"
@@ -36,7 +32,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface SettingsProps {
   open: boolean
