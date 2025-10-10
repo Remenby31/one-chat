@@ -4,7 +4,19 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'configure-response-headers',
+      configureServer: (server) => {
+        server.middlewares.use((_req, res, next) => {
+          // Permissive CSP for Electron app - allows all external connections
+          res.setHeader('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src *;")
+          next()
+        })
+      }
+    }
+  ],
   base: process.env.ELECTRON === 'true' ? './' : '/',
   resolve: {
     alias: {

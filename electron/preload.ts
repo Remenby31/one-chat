@@ -15,10 +15,14 @@ const electronAPI = {
 
   // API operations
   fetchModels: (baseURL: string, apiKey: string) => ipcRenderer.invoke('api:fetch-models', baseURL, apiKey),
-  chatCompletion: (baseURL: string, apiKey: string, body: any) => ipcRenderer.invoke('api:chat-completion', baseURL, apiKey, body),
+
+  // Note: Chat completion streaming is now handled directly via fetch() in frontend
+  // No IPC needed thanks to permissive CSP
 };
 
+console.log('[preload.ts] ============================================');
+console.log('[preload.ts] VERSION: 4.0 - TYPESCRIPT MIGRATION');
 console.log('[preload.ts] Exposing electronAPI with methods:', Object.keys(electronAPI));
-console.log('[preload.ts] chatCompletion exists?', typeof electronAPI.chatCompletion);
+console.log('[preload.ts] ============================================');
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

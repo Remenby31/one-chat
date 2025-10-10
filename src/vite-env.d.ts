@@ -9,7 +9,7 @@ interface ElectronAPI {
   resolveEnvVar: (value: string) => Promise<string>
   getEnvVars: () => Promise<Record<string, string>>
   fetchModels: (baseURL: string, apiKey: string) => Promise<{ success: boolean; models?: string[]; error?: string }>
-  chatCompletion: (baseURL: string, apiKey: string, body: any) => Promise<{ success: boolean; data?: string; error?: string }>
+  // Note: Chat completion streaming now uses direct fetch() - no IPC needed
 }
 
 interface Window {

@@ -15,7 +15,7 @@ export default defineConfig({
     rollupOptions: {
       external: ['electron', 'path', 'fs', 'fs/promises', 'url', 'child_process'],
       output: {
-        entryFileNames: '[name].js',
+        entryFileNames: '[name].cjs', // Force .cjs extension for CommonJS output
       },
     },
     emptyOutDir: true,

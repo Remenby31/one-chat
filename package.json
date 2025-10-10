@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "main": "electron/main.cjs",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "start": "npx cross-env NODE_ENV=development electron .",
     "dev": "vite",
