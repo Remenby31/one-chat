@@ -8,7 +8,7 @@ import { ThemeProvider } from '@/components/ThemeProvider'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark" storageKey="onechat-theme">
+      <ThemeProvider defaultTheme="dark" storageKey="jarvis-theme">
         <App />
       </ThemeProvider>
     </ErrorBoundary>

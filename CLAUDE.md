@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OneChat is an Electron-based desktop chat application that integrates AI models via OpenAI-compatible APIs. It uses React with TypeScript for the UI and the assistant-ui library for chat interface components.
+Jarvis is an Electron-based desktop chat application that integrates AI models via OpenAI-compatible APIs. It uses React with TypeScript for the UI and the assistant-ui library for chat interface components.
 
 ## Key Commands
 
@@ -137,7 +137,7 @@ The app uses Electron IPC for secure communication between main and renderer pro
 ### Storage & Configuration
 
 **API Keys/Endpoints**:
-- Stored centrally in `apiKeys.json` (in `AppData/Roaming/OneChat` on Windows)
+- Stored centrally in `apiKeys.json` (in `AppData/Roaming/Jarvis` on Windows)
 - Structure: `ApiKey[] = [{ id, name, key, baseURL }]`
 - Key can be literal string or environment variable reference (`$ENV_VAR_NAME`)
 - Environment variables resolved at runtime via Electron IPC
@@ -161,6 +161,41 @@ The project has MCP servers configured in `.mcp.json`:
 
 These servers provide tools for component discovery and integration.
 
+### MCP OAuth Workflow
+
+MCP servers like Supabase require OAuth 2.1 authentication. The app implements a fully automated OAuth flow:
+
+**1. OAuth Discovery (RFC 8414)** - `src/lib/mcpOAuthDiscovery.ts`:
+- Probes MCP server URL for `www-authenticate` header
+- Fetches resource metadata and authorization server metadata from `.well-known` URLs
+- Automatically discovers `authUrl`, `tokenUrl`, and `scopes`
+
+**2. Dynamic Client Registration (RFC 7591)**:
+- Registers app as OAuth client with authorization server
+- Obtains `client_id` (UUID) and `client_secret` automatically
+- No manual OAuth configuration needed by user
+
+**3. PKCE Authorization Flow** - `src/lib/mcpAuth.ts`:
+- Generates cryptographic `code_verifier` and `code_challenge` (SHA-256)
+- Opens system browser with authorization URL
+- User authenticates on provider's page
+- App receives callback via `jarvis://oauth/callback` custom protocol
+- Exchanges authorization code for `access_token` and `refresh_token`
+
+**4. Token Management**:
+- Tokens stored in `mcpServers.json` with `client_secret` for refresh
+- Access tokens typically expire after 1 hour
+- Refresh tokens valid for 30+ days
+- `ensureValidToken()` automatically refreshes expired tokens (5-minute buffer)
+- Token refresh uses stored `client_secret` - no re-authentication needed
+
+**5. State Persistence**:
+- OAuth config (`clientId`, `clientSecret`, `authUrl`, `tokenUrl`, `scopes`) → `AppData/mcpServers.json`
+- Access/refresh tokens → `AppData/mcpServers.json` (persist across restarts)
+- OAuth flow state (CSRF protection) → `sessionStorage` (temporary, 10-minute expiry)
+
+**UX**: Users see simple "Authenticate" button - all OAuth discovery and DCR happen automatically in background.
+
 ## Important Notes
 
 ### Development & Build
@@ -169,7 +204,7 @@ These servers provide tools for component discovery and integration.
 - **Do not launch app** - The user will handle launching and testing
 
 ### Security & Storage
-- **Storage location**: `AppData/Roaming/OneChat` on Windows, `~/Library/Application Support/OneChat` on macOS
+- **Storage location**: `AppData/Roaming/Jarvis` on Windows, `~/Library/Application Support/Jarvis` on macOS
   - `models.json` - Model configurations
   - `apiKeys.json` - API keys/endpoints (NOT encrypted - use env vars for production)
   - `selectedModel.json` - Currently selected model ID

@@ -28,23 +28,30 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
+import { MCPButton } from "@/components/MCPButton";
+import type { MCPServer } from "@/types/mcp";
 import { cn } from "@/lib/utils";
 import { LazyMotion, MotionConfig, domAnimation } from "motion/react";
 import * as m from "motion/react-m";
 
-export const Thread: FC = () => {
+interface ThreadProps {
+  mcpServers?: MCPServer[];
+  onMcpToggle?: (id: string, enabled: boolean) => void;
+  onSettingsClick?: () => void;
+  opacity?: number;
+}
+
+export const Thread: FC<ThreadProps> = ({ mcpServers = [], onMcpToggle, onSettingsClick, opacity = 1 }) => {
   return (
     <LazyMotion features={domAnimation}>
       <MotionConfig reducedMotion="user">
         <ThreadPrimitive.Root
-          className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
+          className="aui-root aui-thread-root @container flex h-full flex-col"
           style={{
             ["--thread-max-width" as string]: "44rem",
           }}
         >
           <ThreadPrimitive.Viewport className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4">
-            <ThreadWelcome />
-
             <ThreadPrimitive.Messages
               components={{
                 UserMessage,
@@ -55,7 +62,30 @@ export const Thread: FC = () => {
             <ThreadPrimitive.If empty={false}>
               <div className="aui-thread-viewport-spacer min-h-8 grow" />
             </ThreadPrimitive.If>
-            <Composer />
+
+            {/* Composer at bottom when thread has messages */}
+            <ThreadPrimitive.If empty={false}>
+              <Composer
+                mcpServers={mcpServers}
+                onMcpToggle={onMcpToggle}
+                onSettingsClick={onSettingsClick}
+                opacity={opacity}
+              />
+            </ThreadPrimitive.If>
+
+            {/* Centered composer when thread is empty */}
+            <ThreadPrimitive.Empty>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="pointer-events-auto w-full">
+                  <CenteredComposer
+                    mcpServers={mcpServers}
+                    onMcpToggle={onMcpToggle}
+                    onSettingsClick={onSettingsClick}
+                    opacity={opacity}
+                  />
+                </div>
+              </div>
+            </ThreadPrimitive.Empty>
           </ThreadPrimitive.Viewport>
         </ThreadPrimitive.Root>
       </MotionConfig>
@@ -74,36 +104,6 @@ const ThreadScrollToBottom: FC = () => {
         <ArrowDownIcon />
       </TooltipIconButton>
     </ThreadPrimitive.ScrollToBottom>
-  );
-};
-
-const ThreadWelcome: FC = () => {
-  return (
-    <ThreadPrimitive.Empty>
-      <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-[var(--thread-max-width)] flex-grow flex-col">
-        <div className="aui-thread-welcome-center flex w-full flex-grow flex-col items-center justify-center">
-          <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-8">
-            <m.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="aui-thread-welcome-message-motion-1 text-2xl font-semibold"
-            >
-              Hello there!
-            </m.div>
-            <m.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ delay: 0.1 }}
-              className="aui-thread-welcome-message-motion-2 text-2xl text-muted-foreground/65"
-            >
-              How can I help you today?
-            </m.div>
-          </div>
-        </div>
-      </div>
-    </ThreadPrimitive.Empty>
   );
 };
 
@@ -165,9 +165,16 @@ const ThreadWelcomeSuggestions: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+interface ComposerProps {
+  mcpServers?: MCPServer[];
+  onMcpToggle?: (id: string, enabled: boolean) => void;
+  onSettingsClick?: () => void;
+  opacity?: number;
+}
+
+const Composer: FC<ComposerProps> = ({ mcpServers = [], onMcpToggle, onSettingsClick, opacity = 1 }) => {
   return (
-    <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4 md:pb-6">
+    <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-3xl pb-4 md:pb-6">
       <ThreadScrollToBottom />
       <ThreadPrimitive.Empty>
         <ThreadWelcomeSuggestions />
@@ -181,16 +188,60 @@ const Composer: FC = () => {
           autoFocus
           aria-label="Message input"
         />
-        <ComposerAction />
+        <ComposerAction
+          mcpServers={mcpServers}
+          onMcpToggle={onMcpToggle}
+          onSettingsClick={onSettingsClick}
+          opacity={opacity}
+        />
       </ComposerPrimitive.Root>
     </div>
   );
 };
 
-const ComposerAction: FC = () => {
+const CenteredComposer: FC<ComposerProps> = ({ mcpServers = [], onMcpToggle, onSettingsClick, opacity = 1 }) => {
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className="aui-composer-wrapper-centered mx-auto flex w-full max-w-3xl flex-col gap-4 px-4"
+    >
+      <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col rounded-3xl border border-border bg-muted px-1 pt-1 pb-1 shadow-[0_9px_9px_0px_rgba(0,0,0,0.01),0_2px_5px_0px_rgba(0,0,0,0.06)] dark:border-muted-foreground/15">
+        <ComposerAttachments />
+        <ComposerPrimitive.Input
+          placeholder="Send a message..."
+          className="aui-composer-input max-h-32 h-10 w-full resize-none bg-transparent px-3.5 py-2 text-base outline-none placeholder:text-muted-foreground focus:outline-primary"
+          rows={1}
+          autoFocus
+          aria-label="Message input"
+        />
+        <ComposerAction
+          mcpServers={mcpServers}
+          onMcpToggle={onMcpToggle}
+          onSettingsClick={onSettingsClick}
+          opacity={opacity}
+        />
+      </ComposerPrimitive.Root>
+    </m.div>
+  );
+};
+
+const ComposerAction: FC<ComposerProps> = ({ mcpServers = [], onMcpToggle, onSettingsClick, opacity = 1 }) => {
   return (
     <div className="aui-composer-action-wrapper relative mx-1 mt-2 mb-2 flex items-center justify-between">
-      <ComposerAddAttachment />
+      <div className="flex items-center gap-1">
+        <ComposerAddAttachment />
+        {onMcpToggle && onSettingsClick && (
+          <MCPButton
+            servers={mcpServers}
+            onToggle={onMcpToggle}
+            onSettingsClick={onSettingsClick}
+            opacity={opacity}
+          />
+        )}
+      </div>
 
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Send asChild>
@@ -270,18 +321,18 @@ const AssistantActionBar: FC = () => {
       className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex gap-1 text-muted-foreground data-floating:absolute data-floating:rounded-md data-floating:border data-floating:bg-background data-floating:p-1 data-floating:shadow-sm"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy">
+        <TooltipIconButton tooltip="Copy" className="h-7 w-7">
           <MessagePrimitive.If copied>
-            <CheckIcon />
+            <CheckIcon className="size-3.5" />
           </MessagePrimitive.If>
           <MessagePrimitive.If copied={false}>
-            <CopyIcon />
+            <CopyIcon className="size-3.5" />
           </MessagePrimitive.If>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Refresh">
-          <RefreshCwIcon />
+        <TooltipIconButton tooltip="Refresh" className="h-7 w-7">
+          <RefreshCwIcon className="size-3.5" />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
     </ActionBarPrimitive.Root>

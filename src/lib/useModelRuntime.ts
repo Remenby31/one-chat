@@ -17,7 +17,7 @@ export function useModelRuntime(modelConfig: ModelConfig | null) {
           yield {
             content: [{
               type: 'text' as const,
-              text: 'Welcome to OneChat! To get started, configure an AI model by clicking Settings in the sidebar.'
+              text: 'Welcome to Jarvis! To get started, configure an AI model by clicking Settings in the sidebar.'
             }]
           }
           return

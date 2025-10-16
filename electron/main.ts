@@ -1,11 +1,325 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, protocol } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { fileURLToPath } from 'url';
+import { spawn, ChildProcess } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
+
+// MCP Server process management
+interface MCPServerProcess {
+  id: string;
+  process: ChildProcess;
+  stdin: NodeJS.WritableStream;
+  stdout: NodeJS.ReadableStream;
+  stderr: NodeJS.ReadableStream;
+  messageId: number;
+  pendingRequests: Map<number, { resolve: (value: any) => void; reject: (reason?: any) => void }>;
+}
+
+class MCPProcessManager {
+  private processes: Map<string, MCPServerProcess> = new Map();
+
+  startServer(server: any): Promise<{ success: boolean; error?: string }> {
+    return new Promise((resolve) => {
+      try {
+        const { id, command, args, env } = server;
+
+        // Check if already running
+        if (this.processes.has(id)) {
+          return resolve({ success: false, error: 'Server already running' });
+        }
+
+        console.log(`[MCP] Starting server ${id}: ${command} ${args.join(' ')}`);
+
+        // Capture stderr for error reporting
+        let stderrBuffer = '';
+        let hasResolved = false;
+
+        // On Windows, resolve full path to npx and prepare command
+        let resolvedCommand = command;
+        let resolvedArgs = args;
+
+        if (command === 'npx' && process.platform === 'win32') {
+          // Try to find npx.cmd in common locations
+          const npmPaths = [
+            'C:\\Program Files\\nodejs\\npx.cmd',
+            path.join(process.env.APPDATA || '', 'npm', 'npx.cmd'),
+            path.join(process.env.ProgramFiles || '', 'nodejs', 'npx.cmd'),
+            'C:\\Program Files (x86)\\nodejs\\npx.cmd',
+          ];
+
+          let foundNpx = false;
+          for (const npmPath of npmPaths) {
+            try {
+              const fs = require('fs');
+              if (npmPath && fs.existsSync(npmPath)) {
+                console.log(`[MCP] Found npx at: ${npmPath}`);
+                // Use cmd.exe to run .cmd files on Windows
+                resolvedCommand = 'cmd.exe';
+                resolvedArgs = ['/c', npmPath, ...args];
+                foundNpx = true;
+                break;
+              }
+            } catch (e) {
+              // Continue searching
+            }
+          }
+
+          if (!foundNpx) {
+            console.log(`[MCP] Warning: Could not find npx.cmd in standard locations, using npx directly`);
+            // Fallback: just use 'npx' and hope it's in PATH
+            resolvedCommand = 'npx';
+            resolvedArgs = args;
+          }
+        }
+
+        console.log(`[MCP] Executing: ${resolvedCommand} ${resolvedArgs.join(' ')}`);
+
+        // Spawn the process
+        const childProcess = spawn(resolvedCommand, resolvedArgs, {
+          env: { ...process.env, ...env },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+
+        if (!childProcess.stdin || !childProcess.stdout || !childProcess.stderr) {
+          return resolve({ success: false, error: 'Failed to create stdio pipes' });
+        }
+
+        const serverProcess: MCPServerProcess = {
+          id,
+          process: childProcess,
+          stdin: childProcess.stdin,
+          stdout: childProcess.stdout,
+          stderr: childProcess.stderr,
+          messageId: 1,
+          pendingRequests: new Map(),
+        };
+
+        this.processes.set(id, serverProcess);
+
+        // Handle stdout (JSON-RPC responses)
+        let buffer = '';
+        childProcess.stdout.on('data', (data) => {
+          buffer += data.toString();
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const message = JSON.parse(line);
+                this.handleMessage(id, message);
+              } catch (error) {
+                console.error(`[MCP ${id}] Failed to parse message:`, line, error);
+              }
+            }
+          }
+        });
+
+        // Handle stderr (logs and errors)
+        childProcess.stderr.on('data', (data) => {
+          const text = data.toString();
+          stderrBuffer += text;
+          console.log(`[MCP ${id}] stderr:`, text);
+        });
+
+        // Handle process exit
+        childProcess.on('exit', (code) => {
+          console.log(`[MCP ${id}] Process exited with code ${code}`);
+          this.processes.delete(id);
+
+          // If process exits early with error code and we haven't resolved yet
+          if (!hasResolved && code !== 0) {
+            hasResolved = true;
+            const errorMsg = stderrBuffer.trim() || `Process exited with code ${code}`;
+            resolve({ success: false, error: errorMsg });
+          }
+        });
+
+        childProcess.on('error', (error: any) => {
+          console.error(`[MCP ${id}] Process error:`, error);
+          this.processes.delete(id);
+
+          if (!hasResolved) {
+            hasResolved = true;
+
+            // Provide helpful error message for ENOENT (command not found)
+            if (error.code === 'ENOENT') {
+              const errorMsg = `Command not found: ${command}\n\nMake sure Node.js and npm are installed and in your PATH.\nYou can verify by running 'node --version' and 'npm --version' in a terminal.`;
+              resolve({ success: false, error: errorMsg });
+            } else {
+              resolve({ success: false, error: error.message });
+            }
+          }
+        });
+
+        // Wait a bit to see if process starts successfully
+        setTimeout(() => {
+          if (!hasResolved) {
+            hasResolved = true;
+            if (this.processes.has(id)) {
+              resolve({ success: true });
+            } else {
+              const errorMsg = stderrBuffer.trim() || 'Process failed to start';
+              resolve({ success: false, error: errorMsg });
+            }
+          }
+        }, 1000);
+      } catch (error: any) {
+        resolve({ success: false, error: error.message });
+      }
+    });
+  }
+
+  stopServer(serverId: string): Promise<{ success: boolean; error?: string }> {
+    return new Promise((resolve) => {
+      const serverProcess = this.processes.get(serverId);
+
+      if (!serverProcess) {
+        return resolve({ success: false, error: 'Server not running' });
+      }
+
+      try {
+        serverProcess.process.kill();
+        this.processes.delete(serverId);
+        resolve({ success: true });
+      } catch (error: any) {
+        resolve({ success: false, error: error.message });
+      }
+    });
+  }
+
+  async sendRequest(serverId: string, method: string, params?: any): Promise<any> {
+    const serverProcess = this.processes.get(serverId);
+
+    if (!serverProcess) {
+      throw new Error('Server not running');
+    }
+
+    return new Promise((resolve, reject) => {
+      const id = serverProcess.messageId++;
+      const message = {
+        jsonrpc: '2.0',
+        id,
+        method,
+        params: params || {},
+      };
+
+      serverProcess.pendingRequests.set(id, { resolve, reject });
+
+      // Send the request
+      const messageStr = JSON.stringify(message) + '\n';
+      serverProcess.stdin.write(messageStr);
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (serverProcess.pendingRequests.has(id)) {
+          serverProcess.pendingRequests.delete(id);
+          reject(new Error('Request timeout'));
+        }
+      }, 30000);
+    });
+  }
+
+  private handleMessage(serverId: string, message: any): void {
+    const serverProcess = this.processes.get(serverId);
+    if (!serverProcess) return;
+
+    // Handle response to a request
+    if (message.id !== undefined) {
+      const pending = serverProcess.pendingRequests.get(message.id);
+      if (pending) {
+        serverProcess.pendingRequests.delete(message.id);
+        if (message.error) {
+          pending.reject(new Error(message.error.message || 'Unknown error'));
+        } else {
+          pending.resolve(message.result);
+        }
+      }
+    }
+
+    // Handle notification (no response expected)
+    if (message.method) {
+      console.log(`[MCP ${serverId}] Notification:`, message.method, message.params);
+    }
+  }
+
+  stopAll(): void {
+    for (const [id, serverProcess] of this.processes.entries()) {
+      try {
+        serverProcess.process.kill();
+      } catch (error) {
+        console.error(`Failed to kill process ${id}:`, error);
+      }
+    }
+    this.processes.clear();
+  }
+}
+
+const mcpProcessManager = new MCPProcessManager();
+
+// ========================================
+// Custom Protocol Handler (jarvis://)
+// ========================================
+
+// Register protocol as standard scheme
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'jarvis', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+]);
+
+// Set as default protocol client (for OAuth redirects)
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('jarvis', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('jarvis');
+}
+
+// Handle deep links
+function handleDeepLink(url: string) {
+  console.log('[Protocol] Deep link received:', url);
+
+  // Send URL to renderer via IPC
+  if (mainWindow) {
+    mainWindow.webContents.send('oauth:callback', url);
+  }
+}
+
+// Single instance lock (capture deep links in running instance)
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log('[Protocol] Another instance is running, quitting...');
+  app.quit();
+} else {
+  // Someone tried to run a second instance
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    console.log('[Protocol] Second instance detected, focusing main window');
+
+    // Focus our window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+
+      // Look for jarvis:// URL in command line args
+      const url = commandLine.find(arg => arg.startsWith('jarvis://'));
+      if (url) {
+        handleDeepLink(url);
+      }
+    }
+  });
+
+  // macOS: protocol opened via open-url event
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    console.log('[Protocol] open-url event:', url);
+    handleDeepLink(url);
+  });
+}
 
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.cjs');
@@ -31,44 +345,40 @@ function createWindow() {
     show: false
   });
 
-  // Create custom menu
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Quit',
-          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
-          click: () => app.quit()
-        }
-      ]
-    },
+  // Create minimal menu with DevTools shortcuts
+  const template: any[] = [
     {
       label: 'View',
       submenu: [
         {
-          label: 'Toggle Developer Tools',
-          accelerator: 'F12',
-          click: () => mainWindow?.webContents.toggleDevTools()
+          label: 'Toggle DevTools',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Alt+I' : 'F12',
+          click: () => {
+            mainWindow?.webContents.toggleDevTools();
+          }
         },
         {
-          label: 'Toggle Developer Tools',
-          accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I',
-          click: () => mainWindow?.webContents.toggleDevTools(),
-          visible: false // Hide this duplicate menu item
-        },
-        { type: 'separator' },
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
+          label: 'Reload',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            mainWindow?.webContents.reload();
+          }
+        }
       ]
     }
   ];
+
+  // Add app menu on macOS
+  if (process.platform === 'darwin') {
+    template.unshift({
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    });
+  }
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
@@ -94,7 +404,7 @@ function createWindow() {
   // Development vs Production
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
+    // DevTools can be opened manually with F12 or Cmd/Ctrl+Shift+I
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
@@ -105,6 +415,18 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Register custom protocol handler
+  protocol.handle('jarvis', (request) => {
+    const url = request.url;
+    console.log('[Protocol] Protocol handler called:', url);
+    handleDeepLink(url);
+    // Return a simple response
+    return new Response('OAuth callback received', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' }
+    });
+  });
+
   createWindow();
 
   app.on('activate', () => {
@@ -140,6 +462,16 @@ ipcMain.handle('app:get-version', () => {
   return app.getVersion();
 });
 
+// Open external URL (for OAuth flows)
+ipcMain.handle('app:open-external', async (_event, url: string) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Config file operations
 ipcMain.handle('config:read', async (_event, filename: string) => {
   try {
@@ -167,7 +499,7 @@ ipcMain.handle('config:export', async () => {
   try {
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: 'Export Configuration',
-      defaultPath: 'onechat-config.json',
+      defaultPath: 'jarvis-config.json',
       filters: [
         { name: 'JSON Files', extensions: ['json'] },
         { name: 'All Files', extensions: ['*'] }
@@ -320,3 +652,117 @@ ipcMain.handle('api:fetch-models', async (_event, baseURL: string, apiKey: strin
 
 // Note: Chat completion is now handled directly via fetch() in the frontend
 // No IPC handler needed thanks to permissive CSP
+
+// MCP Server IPC handlers
+ipcMain.handle('mcp:start-server', async (_event, server: any) => {
+  return await mcpProcessManager.startServer(server);
+});
+
+ipcMain.handle('mcp:stop-server', async (_event, serverId: string) => {
+  return await mcpProcessManager.stopServer(serverId);
+});
+
+ipcMain.handle('mcp:list-tools', async (_event, serverId: string) => {
+  try {
+    const result = await mcpProcessManager.sendRequest(serverId, 'tools/list');
+    return { success: true, tools: result.tools || [] };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('mcp:get-capabilities', async (_event, serverId: string) => {
+  try {
+    // Get tools
+    const toolsResult = await mcpProcessManager.sendRequest(serverId, 'tools/list');
+
+    // Get resources (if supported)
+    let resources = [];
+    try {
+      const resourcesResult = await mcpProcessManager.sendRequest(serverId, 'resources/list');
+      resources = resourcesResult.resources || [];
+    } catch (error) {
+      // Resources not supported
+    }
+
+    // Get prompts (if supported)
+    let prompts = [];
+    try {
+      const promptsResult = await mcpProcessManager.sendRequest(serverId, 'prompts/list');
+      prompts = promptsResult.prompts || [];
+    } catch (error) {
+      // Prompts not supported
+    }
+
+    return {
+      success: true,
+      capabilities: {
+        tools: toolsResult.tools || [],
+        resources,
+        prompts,
+      },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('mcp:call-tool', async (_event, serverId: string, toolName: string, args: any) => {
+  try {
+    const result = await mcpProcessManager.sendRequest(serverId, 'tools/call', {
+      name: toolName,
+      arguments: args,
+    });
+    return { success: true, result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Read Claude Desktop config file
+ipcMain.handle('mcp:import-claude-desktop', async () => {
+  try {
+    // Determine config path based on platform
+    let configPath: string;
+    if (process.platform === 'win32') {
+      // Windows: %APPDATA%\Claude\claude_desktop_config.json
+      const appData = process.env.APPDATA;
+      if (!appData) {
+        return { success: false, error: 'APPDATA environment variable not found' };
+      }
+      configPath = path.join(appData, 'Claude', 'claude_desktop_config.json');
+    } else if (process.platform === 'darwin') {
+      // macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+      const home = process.env.HOME || app.getPath('home');
+      configPath = path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+    } else {
+      // Linux: ~/.config/Claude/claude_desktop_config.json
+      const home = process.env.HOME || app.getPath('home');
+      configPath = path.join(home, '.config', 'Claude', 'claude_desktop_config.json');
+    }
+
+    console.log('[MCP] Attempting to read Claude Desktop config from:', configPath);
+
+    // Check if file exists
+    try {
+      await fs.access(configPath);
+    } catch {
+      return { success: false, error: 'Claude Desktop config file not found', notFound: true };
+    }
+
+    // Read and parse config
+    const configData = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configData);
+
+    return { success: true, config };
+  } catch (error: any) {
+    console.error('[MCP] Failed to import Claude Desktop config:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop all MCP servers when app is quitting
+app.on('before-quit', () => {
+  console.log('[MCP] Stopping all servers...');
+  mcpProcessManager.stopAll();
+});

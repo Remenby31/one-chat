@@ -50,7 +50,18 @@
       "Bash(npm run electron:build:*)",
       "Bash(timeout 60 bash -c 'while true; do sleep 1; done')",
       "Bash(cat:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "WebFetch(domain:docs.stripe.com)",
+      "mcp__shadcn__search_items_in_registries",
+      "WebFetch(domain:supabase.com)",
+      "WebFetch(domain:www.rfc-editor.org)",
+      "Bash(del \"C:\\Users\\cruve\\OneDrive\\Projets\\one-chat\\src\\components\\MCPQuickAccess.tsx\")",
+      "Bash(npm --version)",
+      "Bash(npx --version)",
+      "Bash(where node)",
+      "Bash(where npm)",
+      "Bash(where npx)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

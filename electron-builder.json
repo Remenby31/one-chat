@@ -1,6 +1,6 @@
 {
-  "appId": "com.onechat.app",
-  "productName": "OneChat",
+  "appId": "com.jarvis.app",
+  "productName": "Jarvis",
   "directories": {
     "output": "release"
   },
