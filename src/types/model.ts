@@ -5,6 +5,7 @@ export interface ModelConfig {
   model: string
   maxTokens?: number
   temperature?: number
+  systemPrompt?: string
 }
 
 // Dummy export to ensure the module has a runtime export

@@ -24,6 +24,7 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
+import { LoadingIndicator } from "@/components/assistant-ui/loading-indicator";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { MCPToolCall } from "@/components/assistant-ui/mcp-tool-call";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -59,6 +60,16 @@ export const Thread: FC<ThreadProps> = ({ mcpServers = [], onMcpToggle, onSettin
                 AssistantMessage,
               }}
             />
+
+            {/* Loading indicator shown while generating response */}
+            <ThreadPrimitive.If running>
+              <div className="mx-auto w-full max-w-[var(--thread-max-width)] animate-in py-2 duration-200 fade-in slide-in-from-bottom-1">
+                <div className="aui-assistant-message-content mx-2 leading-none rounded-3xl border shadow-2xl px-5 py-4 bg-muted/60">
+                  <LoadingIndicator />
+                </div>
+              </div>
+            </ThreadPrimitive.If>
+
             <ThreadPrimitive.If empty={false}>
               <div className="aui-thread-viewport-spacer min-h-8 grow" />
             </ThreadPrimitive.If>
@@ -314,7 +325,7 @@ const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root asChild>
       <div
-        className="aui-assistant-message-root relative mx-auto w-full max-w-[var(--thread-max-width)] animate-in py-4 duration-200 fade-in slide-in-from-bottom-1 last:mb-24"
+        className="aui-assistant-message-root relative mx-auto w-full max-w-[var(--thread-max-width)] animate-in py-2 duration-200 fade-in slide-in-from-bottom-1"
         data-role="assistant"
       >
         <MessagePrimitive.Unstable_PartsGrouped
@@ -346,7 +357,7 @@ const AssistantMessage: FC = () => {
           <MessageError />
         </div>
 
-        <div className="aui-assistant-message-footer mt-2 ml-2 flex">
+        <div className="aui-assistant-message-footer mt-1 ml-2 flex">
           <BranchPicker />
           <AssistantActionBar />
         </div>
@@ -386,7 +397,7 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root asChild>
       <div
-        className="aui-user-message-root mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-4 duration-200 fade-in slide-in-from-bottom-1 last:mb-5 [&:where(>*)]:col-start-2"
+        className="aui-user-message-root mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-2 duration-200 fade-in slide-in-from-bottom-1 [&:where(>*)]:col-start-2"
         data-role="user"
       >
         <UserMessageAttachments />

@@ -1,6 +1,7 @@
-@import "@assistant-ui/styles/index.css";
-@import "@assistant-ui/styles/markdown.css";
-@import "@assistant-ui/react-markdown/styles/dot.css";
+/* Removed assistant-ui styles - using custom components now */
+/* @import "@assistant-ui/styles/index.css"; */
+/* @import "@assistant-ui/styles/markdown.css"; */
+/* @import "@assistant-ui/react-markdown/styles/dot.css"; */
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
@@ -121,7 +122,6 @@
     width: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;
   }
 
   body {
@@ -190,20 +190,180 @@
   }
 }
 
-/* Reduce spacing in markdown lists and paragraphs */
+/* ChatGPT-style Markdown Formatting */
+
+/* Paragraphs */
+.aui-md-p {
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+  line-height: 1.625 !important;
+  font-size: 0.9375rem !important;
+}
+
+/* Headings */
+.aui-md-h1,
+.aui-md-h2,
+.aui-md-h3,
+.aui-md-h4,
+.aui-md-h5,
+.aui-md-h6 {
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.75rem !important;
+  font-weight: 600 !important;
+  line-height: 1.25 !important;
+}
+
+.aui-md-h1 {
+  font-size: 1.875rem !important;
+}
+
+.aui-md-h2 {
+  font-size: 1.5rem !important;
+}
+
+.aui-md-h3 {
+  font-size: 1.25rem !important;
+}
+
+.aui-md-h4 {
+  font-size: 1.125rem !important;
+}
+
+/* Lists */
 .aui-md-ul,
 .aui-md-ol {
-  margin-top: 0.5rem !important;
-  margin-bottom: 0.5rem !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+  padding-left: 1.75rem !important;
 }
 
 .aui-md-ul li,
 .aui-md-ol li {
-  margin-top: 0.15rem !important;
-  margin-bottom: 0.15rem !important;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  line-height: 1.625 !important;
 }
 
-.aui-md-p {
-  margin-top: 0.5rem !important;
-  margin-bottom: 0.5rem !important;
+.aui-md-ul {
+  list-style-type: disc !important;
 }
+
+.aui-md-ol {
+  list-style-type: decimal !important;
+}
+
+/* Inline code */
+.aui-md-inline-code {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+  padding: 0.125rem 0.375rem !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.875em !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace !important;
+  border: 1px solid hsl(var(--border)) !important;
+}
+
+/* Code blocks with highlight.js (ChatGPT style) */
+.aui-code-block-wrapper {
+  margin: 0.75rem 0 !important;
+  border-radius: 0.5rem !important;
+  overflow: hidden !important;
+  border: 1px solid #3e4451 !important;
+}
+
+.aui-code-header-root {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 0.5rem 1rem !important;
+  background-color: #21252b !important;
+  border-bottom: 1px solid #3e4451 !important;
+}
+
+.aui-code-header-language {
+  font-size: 0.75rem !important;
+  color: #abb2bf !important;
+  text-transform: lowercase !important;
+  font-weight: 500 !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace !important;
+}
+
+.aui-md pre {
+  background-color: #282c34 !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  overflow-x: auto !important;
+}
+
+.aui-md pre code {
+  display: block !important;
+  padding: 1rem !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace !important;
+  color: #abb2bf !important;
+}
+
+/* Override atom-one-dark background to match ChatGPT */
+.hljs {
+  background-color: #282c34 !important;
+  color: #abb2bf !important;
+}
+
+/* Blockquotes */
+.aui-md-blockquote {
+  border-left: 0.25rem solid hsl(var(--border)) !important;
+  padding-left: 1rem !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+  color: hsl(var(--muted-foreground)) !important;
+  font-style: normal !important;
+}
+
+/* Links */
+.aui-md-a {
+  color: hsl(var(--primary)) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 0.125rem !important;
+}
+
+.aui-md-a:hover {
+  text-decoration: none !important;
+}
+
+/* Tables */
+.aui-md-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 0.375rem !important;
+  overflow: hidden !important;
+}
+
+.aui-md-th,
+.aui-md-td {
+  padding: 0.5rem 0.75rem !important;
+  border: 1px solid hsl(var(--border)) !important;
+  text-align: left !important;
+}
+
+.aui-md-th {
+  background-color: hsl(var(--muted)) !important;
+  font-weight: 600 !important;
+}
+
+.aui-md-tr:nth-child(even) {
+  background-color: hsl(var(--muted) / 0.3) !important;
+}
+
+/* Horizontal rule */
+.aui-md-hr {
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+  border: none !important;
+  border-top: 1px solid hsl(var(--border)) !important;
+}
+
+/* Pre (code container) - removed as handled by .aui-md pre above */

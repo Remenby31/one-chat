@@ -24,49 +24,35 @@ export function useOAuthCallback(
   useEffect(() => {
     // Only works in Electron environment
     if (!window.electronAPI?.onOAuthCallback) {
-      console.log('[useOAuthCallback] Not in Electron environment, skipping')
       return
     }
 
-    console.log('[useOAuthCallback] Registering OAuth callback listener:', listenerIdRef.current)
-
     // Register listener for OAuth callbacks
     const cleanup = window.electronAPI.onOAuthCallback(async (url: string) => {
-      console.log('[useOAuthCallback]', listenerIdRef.current, 'OAuth callback received:', url)
-
       // Prevent duplicate processing from multiple listeners
       if (processingCallbacks.has(url)) {
-        console.log('[useOAuthCallback]', listenerIdRef.current, 'Already processing this callback, skipping')
         return
       }
 
       processingCallbacks.add(url)
-      console.log('[useOAuthCallback]', listenerIdRef.current, 'Processing callback (locked)')
 
       try {
         // Process the OAuth callback
         const { serverId, oauthConfig } = await handleOAuthCallback(url)
-        console.log('[useOAuthCallback]', listenerIdRef.current, 'OAuth flow completed successfully for server:', serverId)
-        console.log('[useOAuthCallback]', listenerIdRef.current, 'Received OAuth config with tokens:', {
-          hasAccessToken: !!oauthConfig.accessToken,
-          hasRefreshToken: !!oauthConfig.refreshToken
-        })
         onSuccess(serverId, oauthConfig)
       } catch (error) {
-        console.error('[useOAuthCallback]', listenerIdRef.current, 'OAuth callback error:', error)
+        console.error('[useOAuthCallback] OAuth callback error:', error)
         onError(error as Error)
       } finally {
         // Remove from processing set after a delay to prevent immediate re-processing
         setTimeout(() => {
           processingCallbacks.delete(url)
-          console.log('[useOAuthCallback]', listenerIdRef.current, 'Released callback lock')
         }, 1000)
       }
     })
 
     // Cleanup on unmount
     return () => {
-      console.log('[useOAuthCallback]', listenerIdRef.current, 'Cleaning up OAuth callback listener')
       cleanup()
     }
   }, [onSuccess, onError])

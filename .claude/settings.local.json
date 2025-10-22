@@ -68,7 +68,12 @@
       "Bash(del \"C:\\Users\\cruve\\OneDrive\\Projets\\one-chat\\src\\lib\\mcpStateMigration.ts\")",
       "mcp__shadcn__get_add_command_for_items",
       "Bash(del \"@\\components\\ui\\sonner.tsx\")",
-      "Bash(timeout 2 bash:*)"
+      "Bash(timeout 2 bash:*)",
+      "Bash(git clone:*)",
+      "Bash(timeout 30 npx tsc:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:shiki.style)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

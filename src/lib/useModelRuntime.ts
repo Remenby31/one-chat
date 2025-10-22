@@ -53,13 +53,36 @@ export function useModelRuntime(modelConfig: ModelConfig | null) {
 
         try {
           // Convert assistant-ui messages to OpenAI format
-          const convertedMessages = messages.map((msg) => ({
-            role: msg.role,
-            content: msg.content.map((part: any) => {
-              if (part.type === 'text') return part.text
-              return ''
-            }).join('\n')
-          }))
+          const convertedMessages = messages
+            .map((msg) => ({
+              role: msg.role,
+              content: msg.content.map((part: any) => {
+                if (part.type === 'text') return part.text
+                return ''
+              }).join('\n')
+            }))
+            .filter((msg) => msg.content.trim() !== '') // Filter out empty messages
+
+          // Inject system prompt at the beginning if configured
+          if (modelConfig.systemPrompt) {
+            convertedMessages.unshift({
+              role: 'system',
+              content: modelConfig.systemPrompt
+            })
+          }
+
+          console.log('[useModelRuntime] Converted messages', { original: messages.length, converted: convertedMessages.length, hasSystemPrompt: !!modelConfig.systemPrompt, convertedMessages })
+
+          if (convertedMessages.length === 0) {
+            console.warn('[useModelRuntime] No messages to send after conversion')
+            yield {
+              content: [{
+                type: 'text' as const,
+                text: 'No message to send. Please type a message first.'
+              }]
+            }
+            return
+          }
 
           const requestBody = {
             model: modelConfig.model,

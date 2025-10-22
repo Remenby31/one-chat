@@ -57,6 +57,9 @@ const electronAPI = {
     };
   },
 
+  // Generic invoke for custom IPC calls
+  invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
+
   // Note: Chat completion streaming is now handled directly via fetch() in frontend
   // No IPC needed thanks to permissive CSP
 };

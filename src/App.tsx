@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
-import { Thread } from '@/components/assistant-ui/thread'
+import { ChatThread } from '@/components/chat/ChatThread'
 import { Sidebar } from '@/components/Sidebar'
 import { Settings } from '@/components/Settings'
 import { ModelSelector } from '@/components/ModelSelector'
@@ -10,10 +9,12 @@ import { FlickeringGrid } from '@/components/ui/flickering-grid'
 import type { ModelConfig } from '@/types/model'
 import type { ApiKey } from '@/types/apiKey'
 import type { MCPServer } from '@/types/mcp'
-import { useMCPRuntime } from '@/lib/useMCPRuntime'
 import { mcpManager } from '@/lib/mcpManager'
 import { useOAuthCallback } from '@/hooks/useOAuthCallback'
 import { showSuccessToast, showOAuthErrorToast, showGlobalErrorToast } from '@/lib/errorToast'
+import { useThreadStore } from '@/lib/threadStore'
+import { useChatStore } from '@/lib/chatStore'
+import { DEFAULT_SYSTEM_PROMPT } from '@/lib/defaultSystemPrompt'
 
 // ============================================
 // PARAMÈTRES DE LA GRILLE SCINTILLANTE ET UI
@@ -62,15 +63,24 @@ function App() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
 
+  // Thread management
+  const threadStore = useThreadStore()
+  const chatStore = useChatStore()
+
   // Load saved model and MCP servers on mount
   useEffect(() => {
+    console.log('[App] 🎬 useEffect MOUNTED! Starting config load...')
     const loadConfig = async () => {
+      console.log('[App] 🔄 Loading configuration...')
       if (window.electronAPI) {
         // Use Electron file storage
         const savedModels = await window.electronAPI.readConfig('models.json')
         const savedApiKeys = await window.electronAPI.readConfig('apiKeys.json')
         const selectedModelId = await window.electronAPI.readConfig('selectedModel.json')
         const savedMcpServers = await window.electronAPI.readConfig('mcpServers.json')
+
+        console.log('[App] 📦 Loaded MCP servers from storage:', savedMcpServers)
+        console.log('[App] 📊 MCP servers count:', savedMcpServers?.length || 0)
 
         if (savedApiKeys) {
           setApiKeys(savedApiKeys)
@@ -87,15 +97,23 @@ function App() {
         }
 
         if (savedMcpServers) {
+          console.log('[App] ✅ MCP servers found, recovering stuck servers...')
           // Recover stuck servers first
           const recoveredServers = await mcpManager.recoverStuckServers(savedMcpServers)
+          console.log('[App] 🔧 Recovered servers:', recoveredServers)
+          console.log('[App] 🔄 Setting MCP servers state with', recoveredServers.length, 'servers')
           setMcpServers(recoveredServers)
+          console.log('[App] ✅ MCP servers state updated')
 
           // Save recovered state
           await window.electronAPI.writeConfig('mcpServers.json', recoveredServers)
 
           // Start enabled servers
+          console.log('[App] 🚀 Starting enabled servers...')
           await mcpManager.startEnabledServers(recoveredServers)
+          console.log('[App] ✅ MCP servers initialization complete')
+        } else {
+          console.warn('[App] ⚠️ No MCP servers found in storage (savedMcpServers is null/undefined)')
         }
       } else {
         // Fallback to localStorage for development
@@ -126,14 +144,71 @@ function App() {
       }
     }
 
-    loadConfig()
+    console.log('[App] 🚀 Calling loadConfig()...')
+    loadConfig().catch(error => {
+      console.error('[App] ❌ Error in loadConfig:', error)
+    })
 
-    // Cleanup: stop all servers on unmount
+    // Register listener for MCP server status changes
+    // This keeps React state synchronized with internal state machines
+    const unsubscribe = mcpManager.onStatusChange((serverId, status, metadata) => {
+      console.log(`[App] 🔄 MCP server status changed: ${serverId} → ${status}`)
+
+      setMcpServers(prevServers => {
+        const updatedServers = prevServers.map(server =>
+          server.id === serverId
+            ? { ...server, status, stateMetadata: metadata }
+            : server
+        )
+
+        // Persist updated state to storage
+        if (window.electronAPI) {
+          window.electronAPI.writeConfig('mcpServers.json', updatedServers)
+            .catch(error => console.error('[App] Failed to persist MCP server state:', error))
+        } else {
+          localStorage.setItem('mcpServers', JSON.stringify(updatedServers))
+        }
+
+        return updatedServers
+      })
+    })
+
+    // Cleanup: stop all servers and unregister listener on unmount
     return () => {
+      unsubscribe()
       if (window.electronAPI) {
         mcpManager.stopAllServers(mcpServers)
       }
     }
+  }, [])
+
+  // Load threads and current thread on mount
+  useEffect(() => {
+    const loadThreads = async () => {
+      // Load thread list
+      await threadStore.loadThreads()
+
+      // Load current thread ID
+      let currentThreadId: string | null = null
+      if (window.electronAPI) {
+        currentThreadId = await window.electronAPI.readConfig('currentThread.json')
+      } else {
+        currentThreadId = localStorage.getItem('currentThread')
+      }
+
+      if (currentThreadId) {
+        // Load messages for current thread
+        const { messages, systemPrompt } = await threadStore.switchThread(currentThreadId)
+        chatStore.loadMessages(messages)
+        // System prompt is already set in threadStore by switchThread
+      } else {
+        // Create a new thread if none exists with default system prompt
+        await threadStore.createThread(DEFAULT_SYSTEM_PROMPT)
+        chatStore.clearMessages()
+      }
+    }
+
+    loadThreads()
   }, [])
 
   // Global error handlers
@@ -160,9 +235,6 @@ function App() {
       window.removeEventListener('unhandledrejection', handleUnhandledRejection)
     }
   }, [])
-
-  // Use custom runtime with MCP tools support
-  const runtime = useMCPRuntime(currentModel, mcpServers)
 
   // Handle OAuth callbacks from custom protocol
   useOAuthCallback(
@@ -270,81 +342,100 @@ function App() {
     setIsSettingsOpen(true)
   }
 
+  // Thread management handlers
+  const handleNewChat = async () => {
+    console.log('[App] Creating new chat')
+    await threadStore.createThread(DEFAULT_SYSTEM_PROMPT)
+    chatStore.clearMessages()
+  }
+
+  const handleThreadSelect = async (threadId: string) => {
+    console.log('[App] Switching to thread:', threadId)
+
+    // Don't switch if already on this thread
+    if (threadId === threadStore.currentThreadId) {
+      return
+    }
+
+    // Load messages for selected thread
+    const { messages, systemPrompt } = await threadStore.switchThread(threadId)
+    chatStore.loadMessages(messages)
+    // System prompt is already set in threadStore by switchThread
+  }
+
   return (
     <TooltipProvider>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <div
-          className="flex h-screen bg-background relative overflow-hidden"
-          style={{ '--ui-opacity': `${GRID_CONFIG.uiOpacity}%` } as React.CSSProperties}
-        >
-          {/* Flickering grid background - light theme */}
-          <div className="fixed inset-0 dark:hidden pointer-events-none" style={{ zIndex: 0 }}>
-            <FlickeringGrid
-              squareSize={GRID_CONFIG.squareSize}
-              gridGap={GRID_CONFIG.gridGap}
-              flickerChance={GRID_CONFIG.flickerChance}
-              color={GRID_CONFIG.light.color}
-              maxOpacity={GRID_CONFIG.light.maxOpacity}
-              fadeInSpeed={GRID_CONFIG.fadeInSpeed}
-              fadeOutSpeed={GRID_CONFIG.fadeOutSpeed}
-            />
-          </div>
-
-          {/* Flickering grid background - dark theme */}
-          <div className="fixed inset-0 hidden dark:block pointer-events-none" style={{ zIndex: 0 }}>
-            <FlickeringGrid
-              squareSize={GRID_CONFIG.squareSize}
-              gridGap={GRID_CONFIG.gridGap}
-              flickerChance={GRID_CONFIG.flickerChance}
-              color={GRID_CONFIG.dark.color}
-              maxOpacity={GRID_CONFIG.dark.maxOpacity}
-              fadeInSpeed={GRID_CONFIG.fadeInSpeed}
-              fadeOutSpeed={GRID_CONFIG.fadeOutSpeed}
-            />
-          </div>
-
-          <Sidebar
-            opacity={GRID_CONFIG.uiOpacity}
-            onSettingsClick={() => openSettingsTab('models')}
-            onNewChat={() => {
-              // Handle new chat - will implement later
-              window.location.reload()
-            }}
-          />
-
-          <div className="flex-1 flex flex-col">
-            <div className="px-4 py-3 flex items-center justify-between">
-              <ModelSelector
-                models={models}
-                currentModel={currentModel}
-                apiKeys={apiKeys}
-                onModelChange={handleModelChange}
-                onAddModel={() => openSettingsTab('models')}
-                opacity={GRID_CONFIG.uiOpacity}
-              />
-            </div>
-
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <Thread
-                mcpServers={mcpServers}
-                onMcpToggle={handleMcpToggle}
-                onSettingsClick={() => openSettingsTab('mcp')}
-                opacity={GRID_CONFIG.uiOpacity}
-              />
-            </div>
-          </div>
-
-          <Settings
-            open={isSettingsOpen}
-            onOpenChange={setIsSettingsOpen}
-            onModelChange={handleModelChange}
-            onModelsUpdate={handleModelsUpdate}
-            opacity={GRID_CONFIG.uiOpacity}
-            defaultTab={settingsTab}
+      <div
+        className="flex h-screen overflow-hidden bg-background relative"
+        style={{ '--ui-opacity': `${GRID_CONFIG.uiOpacity}%` } as React.CSSProperties}
+      >
+        {/* Flickering grid background - light theme */}
+        <div className="fixed inset-0 dark:hidden pointer-events-none" style={{ zIndex: 0 }}>
+          <FlickeringGrid
+            squareSize={GRID_CONFIG.squareSize}
+            gridGap={GRID_CONFIG.gridGap}
+            flickerChance={GRID_CONFIG.flickerChance}
+            color={GRID_CONFIG.light.color}
+            maxOpacity={GRID_CONFIG.light.maxOpacity}
+            fadeInSpeed={GRID_CONFIG.fadeInSpeed}
+            fadeOutSpeed={GRID_CONFIG.fadeOutSpeed}
           />
         </div>
-        <Toaster position="top-right" />
-      </AssistantRuntimeProvider>
+
+        {/* Flickering grid background - dark theme */}
+        <div className="fixed inset-0 hidden dark:block pointer-events-none" style={{ zIndex: 0 }}>
+          <FlickeringGrid
+            squareSize={GRID_CONFIG.squareSize}
+            gridGap={GRID_CONFIG.gridGap}
+            flickerChance={GRID_CONFIG.flickerChance}
+            color={GRID_CONFIG.dark.color}
+            maxOpacity={GRID_CONFIG.dark.maxOpacity}
+            fadeInSpeed={GRID_CONFIG.fadeInSpeed}
+            fadeOutSpeed={GRID_CONFIG.fadeOutSpeed}
+          />
+        </div>
+
+        <Sidebar
+          opacity={GRID_CONFIG.uiOpacity}
+          onSettingsClick={() => openSettingsTab('models')}
+          onNewChat={handleNewChat}
+          onThreadSelect={handleThreadSelect}
+          currentThreadId={threadStore.currentThreadId}
+        />
+
+        <div className="flex-1 flex flex-col min-h-0 bg-transparent">
+          <div className="px-4 py-3 flex items-center justify-between bg-transparent">
+            <ModelSelector
+              models={models}
+              currentModel={currentModel}
+              apiKeys={apiKeys}
+              onModelChange={handleModelChange}
+              onAddModel={() => openSettingsTab('models')}
+              opacity={GRID_CONFIG.uiOpacity}
+            />
+          </div>
+
+          <div className="flex-1 flex flex-col min-h-0 bg-transparent">
+            <ChatThread
+              modelConfig={currentModel}
+              mcpServers={mcpServers}
+              onMcpToggle={handleMcpToggle}
+              onSettingsClick={() => openSettingsTab('mcp')}
+              opacity={GRID_CONFIG.uiOpacity}
+            />
+          </div>
+        </div>
+
+        <Settings
+          open={isSettingsOpen}
+          onOpenChange={setIsSettingsOpen}
+          onModelChange={handleModelChange}
+          onModelsUpdate={handleModelsUpdate}
+          opacity={GRID_CONFIG.uiOpacity}
+          defaultTab={settingsTab}
+        />
+      </div>
+      <Toaster position="top-right" />
     </TooltipProvider>
   )
 }

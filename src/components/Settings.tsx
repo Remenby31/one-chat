@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FormField } from "@/components/ui/form-field"
-import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown, Plug2 } from "lucide-react"
+import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown, Plug2, RotateCcw } from "lucide-react"
 import { MCPServerCard } from "@/components/MCPServerCard"
 import { MCPDialog } from "@/components/MCPDialog"
 import { MCPServerDetailsDialog } from "@/components/mcp-details/MCPServerDetailsDialog"
@@ -40,6 +40,8 @@ import {
 } from "@/components/ui/popover"
 import { MessageDialog, useMessageDialog } from "@/components/MessageDialog"
 import { showSuccessToast, showErrorToast, showWarningToast } from "@/lib/errorToast"
+import { Textarea } from "@/components/ui/textarea"
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/defaultSystemPrompt"
 
 interface SettingsProps {
   open: boolean
@@ -61,6 +63,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
     name: "",
     apiKeyId: "",
     model: "gpt-4",
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
   })
   const [newApiKey, setNewApiKey] = useState({ name: "", key: "", baseURL: "" })
   const [showAddModelDialog, setShowAddModelDialog] = useState(false)
@@ -318,6 +321,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
         model: newModel.model,
         temperature: newModel.temperature || 0.7,
         maxTokens: newModel.maxTokens || 2048,
+        systemPrompt: newModel.systemPrompt || undefined,
       }
       const updatedModels = [...models, model]
       saveModels(updatedModels)
@@ -325,6 +329,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
         name: "",
         apiKeyId: "",
         model: "gpt-4",
+        systemPrompt: DEFAULT_SYSTEM_PROMPT,
       })
       setShowAddModelDialog(false)
       if (!selectedModel) {
@@ -850,7 +855,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
       {/* Add Model Dialog */}
       <Dialog open={showAddModelDialog} onOpenChange={setShowAddModelDialog}>
         <DialogContent
-          className="max-w-md"
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
           style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
         >
           <div className="space-y-4 py-4">
@@ -966,6 +971,32 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
                   </Command>
                 </PopoverContent>
               </Popover>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label htmlFor="systemPrompt" className="text-sm font-medium">System Prompt</Label>
+                <SlimButton
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => setNewModel({ ...newModel, systemPrompt: DEFAULT_SYSTEM_PROMPT })}
+                  title="Reset to default Jarvis prompt"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Reset
+                </SlimButton>
+              </div>
+              <Textarea
+                id="systemPrompt"
+                value={newModel.systemPrompt}
+                onChange={(e) => setNewModel({ ...newModel, systemPrompt: e.target.value })}
+                placeholder="Enter system prompt (optional)..."
+                className="min-h-[200px] font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                The system prompt defines the AI's behavior and capabilities. Leave empty to use no system prompt.
+              </p>
             </div>
 
             <SlimButton onClick={handleAddModel} className="w-full">

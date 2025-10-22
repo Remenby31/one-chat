@@ -440,15 +440,74 @@ function createWindow() {
   // Development vs Production
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
-    // DevTools can be opened manually with F12 or Cmd/Ctrl+Shift+I
+    // Open DevTools automatically in development
+    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  // FORCE: Always open DevTools (for debugging)
+  mainWindow.webContents.openDevTools();
+
+  // Add keyboard shortcut to toggle DevTools (F12)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' && !input.alt && !input.control && !input.meta) {
+      if (mainWindow) {
+        if (mainWindow.webContents.isDevToolsOpened()) {
+          mainWindow.webContents.closeDevTools();
+        } else {
+          mainWindow.webContents.openDevTools();
+        }
+      }
+      event.preventDefault();
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
+
+// Thread management IPC handlers
+ipcMain.handle('thread:list', async () => {
+  try {
+    const configDir = await ensureConfigDirectory();
+    const conversationsDir = path.join(configDir, 'conversations');
+
+    // Ensure conversations directory exists
+    try {
+      await fs.access(conversationsDir);
+    } catch {
+      await fs.mkdir(conversationsDir, { recursive: true });
+      return []; // No conversations yet
+    }
+
+    // List all thread files
+    const files = await fs.readdir(conversationsDir);
+    const threadFiles = files.filter(f => f.startsWith('thread_') && f.endsWith('.json'));
+
+    console.log(`[Threads] Found ${threadFiles.length} thread files`);
+    return threadFiles;
+  } catch (error: any) {
+    console.error('[Threads] Failed to list threads:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('thread:delete', async (_event, filename: string) => {
+  try {
+    const configDir = await ensureConfigDirectory();
+    const conversationsDir = path.join(configDir, 'conversations');
+    const filePath = path.join(conversationsDir, filename);
+
+    await fs.unlink(filePath);
+    console.log(`[Threads] Deleted thread file: ${filename}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Threads] Failed to delete thread:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 app.whenReady().then(() => {
   // Register custom protocol handler
@@ -525,7 +584,18 @@ ipcMain.handle('config:read', async (_event, filename: string) => {
 
 ipcMain.handle('config:write', async (_event, filename: string, data: any) => {
   const configDir = await ensureConfigDirectory();
+
+  // Handle subdirectories (e.g., conversations/thread_xxx.json)
   const filePath = path.join(configDir, filename);
+  const fileDir = path.dirname(filePath);
+
+  // Ensure directory exists
+  try {
+    await fs.access(fileDir);
+  } catch {
+    await fs.mkdir(fileDir, { recursive: true });
+  }
+
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
   return true;
 });

@@ -10,6 +10,10 @@
     "assistant-ui": {
       "command": "npx",
       "args": ["-y", "@assistant-ui/mcp-docs-server"]
+    },
+    "electron": {
+      "command": "node",
+      "args": ["mcp-servers/electron-mcp-server/build/index.js"]
     }
   }
 }

@@ -1,16 +1,24 @@
 import { useState, type FC } from "react"
 import { Menu, Settings, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ThreadList } from "@/components/assistant-ui/thread-list"
+import { ThreadListPanel } from "@/components/ThreadListPanel"
 import { cn } from "@/lib/utils"
 
 interface SidebarProps {
   onSettingsClick: () => void
   onNewChat: () => void
+  onThreadSelect: (threadId: string) => void
+  currentThreadId: string | null
   opacity?: number
 }
 
-export const Sidebar: FC<SidebarProps> = ({ onSettingsClick, onNewChat, opacity = 95 }) => {
+export const Sidebar: FC<SidebarProps> = ({
+  onSettingsClick,
+  onNewChat,
+  onThreadSelect,
+  currentThreadId,
+  opacity = 95
+}) => {
   const [isCollapsed, setIsCollapsed] = useState(true)
 
   return (
@@ -58,7 +66,10 @@ export const Sidebar: FC<SidebarProps> = ({ onSettingsClick, onNewChat, opacity 
         "flex-1 overflow-y-auto p-2 scrollbar-hide transition-opacity duration-200",
         isCollapsed ? "opacity-0 invisible" : "opacity-100 delay-200"
       )}>
-        <ThreadList />
+        <ThreadListPanel
+          onThreadSelect={onThreadSelect}
+          currentThreadId={currentThreadId}
+        />
       </div>
 
       <div className="p-2">

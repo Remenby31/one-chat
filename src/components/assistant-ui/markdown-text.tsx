@@ -6,12 +6,14 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown"
 import remarkGfm from "remark-gfm"
+import rehypeHighlight from "rehype-highlight"
+import rehypeRaw from "rehype-raw"
 import { type FC, memo, useState } from "react"
 import { CheckIcon, CopyIcon } from "lucide-react"
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button"
 import { cn } from "@/lib/utils"
-import { SyntaxHighlighter } from "@/components/assistant-ui/shiki-highlighter"
 import { MermaidDiagram } from "@/components/assistant-ui/mermaid-diagram"
+import "highlight.js/styles/atom-one-dark.css"
 
 type CodeHeaderProps = {
   language: string
@@ -22,13 +24,9 @@ const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw, rehypeHighlight]}
       className="aui-md"
       components={defaultComponents}
-      componentsByLanguage={{
-        mermaid: {
-          SyntaxHighlighter: MermaidDiagram
-        },
-      }}
     />
   )
 }
@@ -73,7 +71,6 @@ const useCopyToClipboard = ({
 }
 
 const defaultComponents = memoizeMarkdownComponents({
-  SyntaxHighlighter: SyntaxHighlighter,
   h1: ({ className, ...props }) => (
     <h1 className={cn("aui-md-h1", className)} {...props} />
   ),
@@ -125,9 +122,23 @@ const defaultComponents = memoizeMarkdownComponents({
   sup: ({ className, ...props }) => (
     <sup className={cn("aui-md-sup", className)} {...props} />
   ),
-  pre: ({ className, ...props }) => (
-    <pre className={cn("aui-md-pre", className)} {...props} />
-  ),
+  pre: function Pre({ children, ...props }: any) {
+    // Extract code element and language from children
+    const codeElement = children?.props
+    const className = codeElement?.className || ''
+    const match = /language-(\w+)/.exec(className)
+    const language = match ? match[1] : 'text'
+    const code = codeElement?.children ? String(codeElement.children) : ''
+
+    return (
+      <div className="aui-code-block-wrapper">
+        <CodeHeader language={language} code={code} />
+        <pre className={cn("aui-md-pre", className)} {...props}>
+          {children}
+        </pre>
+      </div>
+    )
+  },
   code: function Code({ className, ...props }) {
     const isCodeBlock = useIsMarkdownCodeBlock()
     return (

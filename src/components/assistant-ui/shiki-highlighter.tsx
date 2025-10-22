@@ -29,7 +29,7 @@ export type HighlighterProps = Omit<
 export const SyntaxHighlighter: FC<HighlighterProps> = ({
   code,
   language,
-  theme = { dark: "kanagawa-wave", light: "kanagawa-lotus" },
+  theme = { dark: "github-dark", light: "github-light" },
   className,
   addDefaultStyles = false, // assistant-ui requires custom base styles
   showLanguage = false, // assistant-ui/react-markdown handles language labels
@@ -38,7 +38,7 @@ export const SyntaxHighlighter: FC<HighlighterProps> = ({
   ...props
 }) => {
   const BASE_STYLES =
-    "aui-shiki-base [&_pre]:overflow-x-auto [&_pre]:rounded-b-lg [&_pre]:!bg-muted/75 [&_pre]:p-4";
+    "aui-shiki-base [&_pre]:overflow-x-auto [&_pre]:rounded-b-lg [&_pre]:!bg-[#0d1117] dark:[&_pre]:!bg-[#0d1117] [&_pre]:p-4";
 
   return (
     <ShikiHighlighter
