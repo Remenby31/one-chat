@@ -1,6 +1,5 @@
 import {
   useLocalRuntime,
-  unstable_useRemoteThreadListRuntime as useRemoteThreadListRuntime,
 } from '@assistant-ui/react'
 import type { ChatModelRunOptions } from '@assistant-ui/react'
 import { useMemo, useEffect, useState } from 'react'
@@ -8,7 +7,6 @@ import type { ModelConfig } from '@/types/model'
 import type { ApiKey } from '@/types/apiKey'
 import type { MCPServer, MCPTool } from '@/types/mcp'
 import { mcpManager } from '@/lib/mcpManager'
-import { createThreadListAdapter } from '@/lib/threadListAdapter'
 
 /**
  * Enhanced runtime that integrates MCP tools with the AI model
@@ -29,7 +27,7 @@ export function useMCPRuntime(
   // Fetch tools from all active MCP servers
   useEffect(() => {
     const activeServers = mcpServers.filter(
-      s => s.enabled && s.status === 'running'
+      s => s.enabled && s.status === 'RUNNING'
     )
 
     if (activeServers.length === 0) {
@@ -151,6 +149,9 @@ export function useMCPRuntime(
           let turnCount = 0
           const MAX_TURNS = 10 // Prevent infinite loops
 
+          // Accumulate all content parts (tool calls + text) to show in UI
+          const allContentParts: any[] = []
+
           while (turnCount < MAX_TURNS) {
             turnCount++
             console.log(`[useMCPRuntime] Turn ${turnCount}, messages: ${conversationMessages.length}`)
@@ -165,14 +166,6 @@ export function useMCPRuntime(
             if (openaiTools.length > 0) {
               requestBody.tools = openaiTools
               console.log(`[useMCPRuntime] Including ${openaiTools.length} tools in request`)
-            }
-
-            // Add optional parameters
-            if (modelConfig.temperature !== undefined) {
-              requestBody.temperature = modelConfig.temperature
-            }
-            if (modelConfig.maxTokens !== undefined) {
-              requestBody.max_tokens = modelConfig.maxTokens
             }
 
             const requestStartTime = performance.now()
@@ -209,6 +202,9 @@ export function useMCPRuntime(
             let chunkCount = 0
             let firstTokenTime: number | null = null
 
+            // Track the text part if we have one for this turn
+            let currentTextPart: any = null
+
             while (true) {
               const { done, value } = await reader.read()
               if (done) break
@@ -240,9 +236,19 @@ export function useMCPRuntime(
                       fullText += delta.content
                       chunkCount++
 
-                      // Yield text updates
+                      // Create or update text part
+                      if (!currentTextPart) {
+                        currentTextPart = { type: 'text' as const, text: fullText }
+                      } else {
+                        currentTextPart.text = fullText
+                      }
+
+                      // Yield text updates with all accumulated content
                       yield {
-                        content: [{ type: 'text' as const, text: fullText }]
+                        content: [
+                          ...allContentParts,
+                          currentTextPart
+                        ]
                       }
                     }
 
@@ -277,11 +283,18 @@ export function useMCPRuntime(
             }
 
             const totalTime = (performance.now() - requestStartTime).toFixed(0)
-            console.log(`[useMCPRuntime] Turn ${turnCount} complete. Time: ${totalTime}ms, Tool calls: ${toolCalls.length}`)
+            console.log(`[useMCPRuntime] Turn ${turnCount} complete. Time: ${totalTime}ms, Text length: ${fullText.length}, Tool calls: ${toolCalls.length}`)
+
+            // If we have text from this turn, add it to accumulated parts
+            if (currentTextPart && fullText.length > 0) {
+              allContentParts.push(currentTextPart)
+              console.log(`[useMCPRuntime] Added text part to accumulated content. Total parts: ${allContentParts.length}`)
+            }
 
             // If no tool calls, we're done
             if (toolCalls.length === 0) {
               console.log('[useMCPRuntime] No tool calls, conversation complete')
+              console.log('[useMCPRuntime] Final conversation history:', conversationMessages.map(m => `${m.role}: ${m.content?.substring?.(0, 50) || '[tool call]'}...`))
               break
             }
 
@@ -302,9 +315,14 @@ export function useMCPRuntime(
               }))
             } as any)
 
+            console.log(`[useMCPRuntime] Added assistant message with ${toolCalls.length} tool calls. Messages count: ${conversationMessages.length}`)
+
             // Execute each tool call sequentially (so we can yield progress)
             const toolResults = []
             for (const toolCall of toolCalls) {
+              // Record start time before try block
+              let startTime = performance.now()
+
               try {
                 // Parse the tool name to extract server ID and tool name
                 const [serverId, ...toolNameParts] = toolCall.function.name.split('__')
@@ -321,32 +339,39 @@ export function useMCPRuntime(
                   throw new Error('Invalid tool arguments')
                 }
 
-                // Yield tool call start (shows in UI)
+                // Create tool call part
+                const toolCallPart = {
+                  type: 'tool-call' as const,
+                  toolCallId: toolCall.id,
+                  toolName: toolCall.function.name,
+                  args: args,
+                  argsText: JSON.stringify(args, null, 2),
+                  result: undefined,
+                  startTime: startTime
+                }
+
+                // Add to accumulated parts and yield
+                allContentParts.push(toolCallPart)
                 yield {
-                  content: [{
-                    type: 'tool-call' as const,
-                    toolCallId: toolCall.id,
-                    toolName: toolCall.function.name,
-                    args: args,
-                    argsText: JSON.stringify(args, null, 2),
-                    result: undefined
-                  }]
+                  content: [...allContentParts]
                 }
 
                 // Call the tool via MCP manager
                 const result = await mcpManager.callTool(serverId, toolName, args)
-                console.log(`[useMCPRuntime] Tool ${toolName} returned:`, result)
+                const endTime = performance.now()
+                const duration = endTime - startTime
+                console.log(`[useMCPRuntime] Tool ${toolName} returned in ${duration.toFixed(0)}ms:`, result)
 
-                // Yield tool result (updates UI)
+                // Update the tool call part with result
+                toolCallPart.result = result
+                Object.assign(toolCallPart, {
+                  endTime: endTime,
+                  duration: duration
+                })
+
+                // Yield updated tool result
                 yield {
-                  content: [{
-                    type: 'tool-call' as const,
-                    toolCallId: toolCall.id,
-                    toolName: toolCall.function.name,
-                    args: args,
-                    argsText: JSON.stringify(args, null, 2),
-                    result: result
-                  }]
+                  content: [...allContentParts]
                 }
 
                 toolResults.push({
@@ -355,19 +380,28 @@ export function useMCPRuntime(
                   content: typeof result === 'string' ? result : JSON.stringify(result)
                 } as any)
               } catch (error) {
+                const endTime = performance.now()
+                const duration = endTime - startTime
                 console.error('[useMCPRuntime] Tool call error:', error)
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-                // Yield error result
+                // Create error tool call part
+                const errorToolCallPart = {
+                  type: 'tool-call' as const,
+                  toolCallId: toolCall.id,
+                  toolName: toolCall.function.name,
+                  args: {},
+                  argsText: '{}',
+                  result: { error: errorMessage },
+                  startTime: startTime,
+                  endTime: endTime,
+                  duration: duration
+                }
+
+                // Add to accumulated parts and yield
+                allContentParts.push(errorToolCallPart)
                 yield {
-                  content: [{
-                    type: 'tool-call' as const,
-                    toolCallId: toolCall.id,
-                    toolName: toolCall.function.name,
-                    args: {},
-                    argsText: '{}',
-                    result: { error: errorMessage }
-                  }]
+                  content: [...allContentParts]
                 }
 
                 toolResults.push({
@@ -382,7 +416,8 @@ export function useMCPRuntime(
             conversationMessages.push(...toolResults as any)
 
             // Continue the loop to get the final response with tool results
-            console.log('[useMCPRuntime] Tool calls complete, continuing conversation')
+            console.log(`[useMCPRuntime] Added ${toolResults.length} tool results. Messages count: ${conversationMessages.length}`)
+            console.log('[useMCPRuntime] Tool calls complete, continuing conversation for next turn...')
           }
 
           if (turnCount >= MAX_TURNS) {
@@ -452,18 +487,8 @@ export function useMCPRuntime(
     }
   }, [modelConfig, openaiTools])
 
-  // Create thread list adapter (singleton)
-  const threadListAdapter = useMemo(() => createThreadListAdapter(), [])
-
-  // Create runtime with multi-thread support
-  const runtime = useRemoteThreadListRuntime({
-    runtimeHook: () => {
-      // This hook is called for each thread
-      // Use the adapter created above (has access to modelConfig and openaiTools via closure)
-      return useLocalRuntime(adapter)
-    },
-    adapter: threadListAdapter
-  })
+  // Create runtime with the adapter
+  const runtime = useLocalRuntime(adapter)
 
   return runtime
 }

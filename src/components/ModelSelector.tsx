@@ -8,15 +8,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { ModelConfig } from "@/types/model"
+import type { ApiKey } from "@/types/apiKey"
 
 interface ModelSelectorProps {
   models: ModelConfig[]
   currentModel: ModelConfig | null
+  apiKeys: ApiKey[]
   onModelChange: (model: ModelConfig) => void
   onAddModel: () => void
+  opacity?: number
 }
 
-export function ModelSelector({ models, currentModel, onModelChange, onAddModel }: ModelSelectorProps) {
+export function ModelSelector({ models, currentModel, apiKeys, onModelChange, onAddModel, opacity = 1 }: ModelSelectorProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -30,7 +33,11 @@ export function ModelSelector({ models, currentModel, onModelChange, onAddModel 
           <ChevronDown className="h-4 w-4 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[280px]">
+      <DropdownMenuContent
+        align="start"
+        className="w-[280px]"
+        style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
+      >
         {models.length === 0 ? (
           <div className="px-2 py-1.5 text-sm text-muted-foreground">
             No models configured

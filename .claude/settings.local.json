@@ -61,7 +61,14 @@
       "Bash(where node)",
       "Bash(where npm)",
       "Bash(where npx)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "mcp__ide__getDiagnostics",
+      "Bash(del \"C:\\Users\\cruve\\OneDrive\\Projets\\one-chat\\src\\lib\\mcpStateMigration.ts\")",
+      "mcp__shadcn__get_add_command_for_items",
+      "Bash(del \"@\\components\\ui\\sonner.tsx\")",
+      "Bash(timeout 2 bash:*)"
     ],
     "deny": [],
     "ask": []

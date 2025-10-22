@@ -24,6 +24,18 @@ const electronAPI = {
   mcpCallTool: (serverId: string, toolName: string, args: any) => ipcRenderer.invoke('mcp:call-tool', serverId, toolName, args),
   mcpImportClaudeDesktop: () => ipcRenderer.invoke('mcp:import-claude-desktop'),
 
+  // MCP Logs
+  mcpGetLogs: (serverId: string) => ipcRenderer.invoke('mcp:get-logs', serverId),
+  mcpClearLogs: (serverId: string) => ipcRenderer.invoke('mcp:clear-logs', serverId),
+  onMCPLog: (callback: (log: any) => void) => {
+    const handler = (_event: any, log: any) => callback(log);
+    ipcRenderer.on('mcp:log', handler);
+    // Return cleanup function
+    return () => {
+      ipcRenderer.removeListener('mcp:log', handler);
+    };
+  },
+
   // OAuth operations
   openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
   onOAuthCallback: (callback: (url: string) => void) => {
@@ -32,6 +44,16 @@ const electronAPI = {
     // Return cleanup function
     return () => {
       ipcRenderer.removeListener('oauth:callback', handler);
+    };
+  },
+
+  // MCP server process events
+  onMcpServerExited: (callback: (data: { serverId: string; exitCode: number | null }) => void) => {
+    const handler = (_event: any, data: { serverId: string; exitCode: number | null }) => callback(data);
+    ipcRenderer.on('mcp:server-exited', handler);
+    // Return cleanup function
+    return () => {
+      ipcRenderer.removeListener('mcp:server-exited', handler);
     };
   },
 

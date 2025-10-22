@@ -21,8 +21,8 @@ import { FormField } from "@/components/ui/form-field"
 import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown, Plug2 } from "lucide-react"
 import { MCPServerCard } from "@/components/MCPServerCard"
 import { MCPDialog } from "@/components/MCPDialog"
+import { MCPServerDetailsDialog } from "@/components/mcp-details/MCPServerDetailsDialog"
 import type { MCPServer } from "@/types/mcp"
-import { MCP_SERVER_TEMPLATES } from "@/types/mcp"
 import { mcpManager } from "@/lib/mcpManager"
 import { startOAuthFlow } from "@/lib/mcpAuth"
 import {
@@ -38,6 +38,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { MessageDialog, useMessageDialog } from "@/components/MessageDialog"
+import { showSuccessToast, showErrorToast, showWarningToast } from "@/lib/errorToast"
 
 interface SettingsProps {
   open: boolean
@@ -65,12 +67,15 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
   const [showAddApiKeyDialog, setShowAddApiKeyDialog] = useState(false)
   const [showMCPDialog, setShowMCPDialog] = useState(false)
   const [editingMCPServer, setEditingMCPServer] = useState<MCPServer | null>(null)
+  const [showMCPDetailsDialog, setShowMCPDetailsDialog] = useState(false)
+  const [selectedMCPServer, setSelectedMCPServer] = useState<MCPServer | null>(null)
   const [envVars, setEnvVars] = useState<Record<string, string>>({})
   const [showApiKey, setShowApiKey] = useState(false)
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [openModelCombobox, setOpenModelCombobox] = useState(false)
   const [testingServers, setTestingServers] = useState<Set<string>>(new Set())
+  const { dialogState, showSuccess, showError, showWarning, closeDialog } = useMessageDialog()
 
   // Update active tab when defaultTab or dialog opens
   useEffect(() => {
@@ -105,8 +110,8 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
           const serversWithStatus = savedMcpServers.map((server: MCPServer) => ({
             ...server,
             status: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
-              ? 'needs_auth' as const
-              : (server.status || 'idle' as const)
+              ? 'AUTH_REQUIRED' as const
+              : (server.status || 'IDLE' as const)
           }))
           setMcpServers(serversWithStatus)
         }
@@ -135,8 +140,8 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
           const serversWithStatus = parsed.map((server: MCPServer) => ({
             ...server,
             status: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
-              ? 'needs_auth' as const
-              : (server.status || 'idle' as const)
+              ? 'AUTH_REQUIRED' as const
+              : (server.status || 'IDLE' as const)
           }))
           setMcpServers(serversWithStatus)
         }
@@ -148,12 +153,21 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
 
   // Subscribe to MCP server status changes
   useEffect(() => {
-    const unsubscribe = mcpManager.onStatusChange((serverId, status) => {
-      setMcpServers(prevServers =>
-        prevServers.map(server =>
-          server.id === serverId ? { ...server, status } : server
+    const unsubscribe = mcpManager.onStatusChange((serverId, status, metadata) => {
+      setMcpServers(prevServers => {
+        const updatedServers = prevServers.map(server =>
+          server.id === serverId ? { ...server, status, stateMetadata: metadata } : server
         )
-      )
+
+        // Persist status changes to file
+        if (window.electronAPI) {
+          window.electronAPI.writeConfig('mcpServers.json', updatedServers)
+        } else {
+          localStorage.setItem("mcpServers", JSON.stringify(updatedServers))
+        }
+
+        return updatedServers
+      })
     })
 
     return unsubscribe
@@ -289,7 +303,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
     // Check if any model is using this API key
     const isUsed = models.some(m => m.apiKeyId === id)
     if (isUsed) {
-      alert("Cannot delete API key that is in use by a model")
+      showWarningToast("Cannot delete endpoint", "This endpoint is currently in use by a model")
       return
     }
     saveApiKeys(apiKeys.filter(k => k.id !== id))
@@ -342,9 +356,9 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
     if (window.electronAPI) {
       const result = await window.electronAPI.exportConfig()
       if (result.success && result.path) {
-        alert(`Configuration exported successfully to ${result.path}`)
+        showSuccessToast("Configuration exported", `Saved to ${result.path}`)
       } else if (!result.canceled && result.error) {
-        alert(`Export failed: ${result.error}`)
+        showErrorToast("Export failed", result.error)
       }
     } else {
       // Fallback for web: download as file
@@ -359,6 +373,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
       a.download = 'jarvis-config.json'
       a.click()
       URL.revokeObjectURL(url)
+      showSuccessToast("Configuration exported", "Downloaded as jarvis-config.json")
     }
   }
 
@@ -374,9 +389,9 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
           setModels(result.config.models)
           onModelsUpdate?.()
         }
-        alert('Configuration imported successfully!')
+        showSuccessToast('Configuration imported', 'Your settings have been restored successfully')
       } else if (!result.canceled && result.error) {
-        alert(`Import failed: ${result.error}`)
+        showErrorToast('Import failed', result.error)
       }
     } else {
       // Fallback for web: file input
@@ -398,9 +413,9 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
               setModels(config.models)
               onModelsUpdate?.()
             }
-            alert('Configuration imported successfully!')
+            showSuccessToast('Configuration imported', 'Your settings have been restored successfully')
           } catch (error) {
-            alert('Failed to import configuration: Invalid file format')
+            showErrorToast('Import failed', 'Invalid file format')
           }
         }
       }
@@ -422,10 +437,11 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
     const newServer: MCPServer = {
       ...serverData,
       id: Date.now().toString(),
-      status: 'idle',
+      status: 'IDLE',
     }
     saveMcpServers([...mcpServers, newServer])
     setEditingMCPServer(null)
+    setActiveTab('mcp')
   }
 
   const handleEditMcpServer = (serverData: Omit<MCPServer, 'id' | 'status' | 'connectedAt'>) => {
@@ -447,27 +463,38 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
   }
 
   const handleToggleMcpServer = async (id: string, enabled: boolean) => {
-    const updatedServers = mcpServers.map(server =>
-      server.id === id ? { ...server, enabled } : server
+    const server = mcpServers.find(s => s.id === id)
+    if (!server) return
+
+    console.log(`[Settings] Toggling MCP server ${server.name} to ${enabled ? 'ON' : 'OFF'}`)
+
+    const updatedServers = mcpServers.map(s =>
+      s.id === id ? { ...s, enabled } : s
     )
     saveMcpServers(updatedServers)
 
     // Start or stop the server via mcpManager
-    const server = updatedServers.find(s => s.id === id)
-    if (server) {
-      try {
-        if (enabled) {
-          await mcpManager.startServer(server)
-        } else {
-          await mcpManager.stopServer(id)
-        }
-      } catch (error) {
-        console.error('Failed to toggle MCP server:', error)
-        // Revert the enabled state on error
+    try {
+      if (enabled) {
+        await mcpManager.startServer(server)
+      } else {
+        await mcpManager.stopServer(id)
+      }
+      console.log(`[Settings] Successfully toggled MCP server ${server.name}`)
+    } catch (error) {
+      console.error(`[Settings] Failed to toggle MCP server ${server.name}:`, error)
+      // Only revert on actual errors (not "already stopped" cases)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const isAlreadyStoppedError = errorMessage.includes('not running') || errorMessage.includes('already stopped')
+
+      if (!isAlreadyStoppedError) {
+        console.warn(`[Settings] Reverting enabled state for ${server.name}`)
         const revertedServers = mcpServers.map(s =>
           s.id === id ? { ...s, enabled: !enabled } : s
         )
         saveMcpServers(revertedServers)
+      } else {
+        console.log(`[Settings] Server was already in desired state, not reverting`)
       }
     }
   }
@@ -483,13 +510,13 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
       const result = await mcpManager.testConnection(server)
 
       if (result.success) {
-        alert(`✅ ${result.message}`)
+        showSuccess('Connection Test Successful', result.message)
       } else {
-        alert(`❌ ${result.message}`)
+        showError('Connection Test Failed', result.message)
       }
     } catch (error) {
       console.error('Test connection error:', error)
-      alert(`❌ Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      showError('Connection Test Failed', error instanceof Error ? error.message : 'Unknown error')
     } finally {
       // Remove from testing set
       setTestingServers(prev => {
@@ -508,26 +535,29 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
       await startOAuthFlow(server)
     } catch (error) {
       console.error('OAuth authentication error:', error)
-      alert(`❌ Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      showErrorToast('Authentication failed', error instanceof Error ? error.message : 'Unknown error')
     }
   }
 
-  const handleAddTemplateServer = (template: typeof MCP_SERVER_TEMPLATES[0]) => {
-    const newServer: MCPServer = {
-      id: Date.now().toString(),
-      name: template.name,
-      description: template.description,
-      command: template.command,
-      args: template.args,
-      enabled: false,
-      requiresAuth: template.requiresAuth,
-      authType: template.authType,
-      oauthConfig: template.oauthConfig as any,
-      category: template.category,
-      icon: template.icon,
-      status: 'idle',
+  const handleOpenMcpServerDetails = (id: string) => {
+    const server = mcpServers.find(s => s.id === id)
+    if (server) {
+      setSelectedMCPServer(server)
+      setShowMCPDetailsDialog(true)
     }
-    saveMcpServers([...mcpServers, newServer])
+  }
+
+  const handleUpdateMcpServer = async (updatedServer: MCPServer) => {
+    const newServers = mcpServers.map(s => s.id === updatedServer.id ? updatedServer : s)
+    setMcpServers(newServers)
+
+    if (window.electronAPI) {
+      await window.electronAPI.writeConfig('mcpServers.json', newServers)
+    } else {
+      localStorage.setItem("mcpServers", JSON.stringify(newServers))
+    }
+
+    showSuccessToast('Server updated', 'Configuration saved successfully')
   }
 
 
@@ -707,56 +737,16 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
             </div>
 
             {mcpServers.length === 0 ? (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-dashed p-8 text-center">
-                  <Plug2 className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mb-3">No MCP servers configured</p>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    MCP servers allow AI models to access external tools and data sources
-                  </p>
-                  <SlimButton onClick={() => { setEditingMCPServer(null); setShowMCPDialog(true); }} variant="outline" size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add your first server
-                  </SlimButton>
-                </div>
-
-                {/* Popular MCP Servers */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold">Popular MCP Servers</h4>
-                  <div className="grid grid-cols-1 gap-2">
-                    {MCP_SERVER_TEMPLATES.map((template) => (
-                      <div
-                        key={template.name}
-                        className="group relative rounded-lg border p-4 hover:border-primary/50 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold">{template.name}</span>
-                              {template.requiresAuth && (
-                                <span className="px-1.5 py-0.5 text-xs rounded bg-primary/10 text-primary font-medium">
-                                  {template.authType}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-2">{template.description}</p>
-                            <code className="text-xs px-1.5 py-0.5 rounded bg-muted">
-                              {template.command} {template.args.join(' ')}
-                            </code>
-                          </div>
-                          <SlimButton
-                            onClick={() => handleAddTemplateServer(template)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add
-                          </SlimButton>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <Plug2 className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground mb-3">No MCP servers configured</p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  MCP servers allow AI models to access external tools and data sources
+                </p>
+                <SlimButton onClick={() => { setEditingMCPServer(null); setShowMCPDialog(true); }} variant="outline" size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add your first server
+                </SlimButton>
               </div>
             ) : (
               <div className="space-y-3">
@@ -768,42 +758,10 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
                     onDelete={handleDeleteMcpServer}
                     onTest={handleTestMcpServer}
                     onAuthenticate={handleAuthenticateMcpServer}
+                    onClick={handleOpenMcpServerDetails}
                     isTesting={testingServers.has(server.id)}
                   />
                 ))}
-
-                {/* Show templates even if we have servers */}
-                {mcpServers.length > 0 && mcpServers.length < 3 && (
-                  <div className="space-y-3 pt-4 border-t mt-4">
-                    <h4 className="text-sm font-semibold">Add More Servers</h4>
-                    <div className="grid grid-cols-1 gap-2">
-                      {MCP_SERVER_TEMPLATES.filter(
-                        template => !mcpServers.some(s => s.name === template.name)
-                      ).slice(0, 3).map((template) => (
-                        <div
-                          key={template.name}
-                          className="group relative rounded-lg border p-3 hover:border-primary/50 transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-semibold">{template.name}</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground">{template.description}</p>
-                            </div>
-                            <SlimButton
-                              onClick={() => handleAddTemplateServer(template)}
-                              size="sm"
-                              variant="ghost"
-                            >
-                              <Plus className="h-3 w-3" />
-                            </SlimButton>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </TabsContent>
@@ -895,10 +853,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
           className="max-w-md"
           style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
         >
-          <DialogHeader>
-            <DialogTitle>Add New Model</DialogTitle>
-          </DialogHeader>
-
           <div className="space-y-4 py-4">
             <FormField
               label="Display Name"
@@ -1121,6 +1075,25 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Message Dialog for detailed messages */}
+      <MessageDialog
+        open={dialogState.open}
+        onOpenChange={closeDialog}
+        type={dialogState.type}
+        title={dialogState.title}
+        message={dialogState.message}
+        opacity={opacity}
+      />
+
+      {/* MCP Server Details Dialog */}
+      <MCPServerDetailsDialog
+        server={selectedMCPServer}
+        open={showMCPDetailsDialog}
+        onOpenChange={setShowMCPDetailsDialog}
+        onServerUpdate={handleUpdateMcpServer}
+        opacity={opacity}
+      />
     </Dialog>
   )
 }

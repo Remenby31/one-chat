@@ -25,7 +25,7 @@ import {
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
-import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import { MCPToolCall } from "@/components/assistant-ui/mcp-tool-call";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { MCPButton } from "@/components/MCPButton";
@@ -46,12 +46,12 @@ export const Thread: FC<ThreadProps> = ({ mcpServers = [], onMcpToggle, onSettin
     <LazyMotion features={domAnimation}>
       <MotionConfig reducedMotion="user">
         <ThreadPrimitive.Root
-          className="aui-root aui-thread-root @container flex h-full flex-col"
+          className="aui-root aui-thread-root @container flex flex-1 flex-col"
           style={{
-            ["--thread-max-width" as string]: "44rem",
+            ["--thread-max-width" as string]: "65rem",
           }}
         >
-          <ThreadPrimitive.Viewport className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4">
+          <ThreadPrimitive.Viewport className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4 pt-20">
             <ThreadPrimitive.Messages
               components={{
                 UserMessage,
@@ -99,9 +99,9 @@ const ThreadScrollToBottom: FC = () => {
       <TooltipIconButton
         tooltip="Scroll to bottom"
         variant="outline"
-        className="aui-thread-scroll-to-bottom absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible dark:bg-background dark:hover:bg-accent"
+        className="aui-thread-scroll-to-bottom absolute -top-12 z-10 self-center rounded-full h-7 w-7 disabled:invisible dark:bg-background dark:hover:bg-accent"
       >
-        <ArrowDownIcon />
+        <ArrowDownIcon className="size-4 text-foreground" />
       </TooltipIconButton>
     </ThreadPrimitive.ScrollToBottom>
   );
@@ -174,7 +174,7 @@ interface ComposerProps {
 
 const Composer: FC<ComposerProps> = ({ mcpServers = [], onMcpToggle, onSettingsClick, opacity = 1 }) => {
   return (
-    <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-3xl pb-4 md:pb-6">
+    <div className="aui-composer-wrapper sticky bottom-0 mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 pb-4 md:pb-6">
       <ThreadScrollToBottom />
       <ThreadPrimitive.Empty>
         <ThreadWelcomeSuggestions />
@@ -286,6 +286,30 @@ const MessageError: FC = () => {
   );
 };
 
+// Helper function to group parts by type (tools first, then text)
+const groupByContentType = (parts: readonly any[]) => {
+  const toolIndices: number[] = [];
+  const textIndices: number[] = [];
+
+  parts.forEach((part, i) => {
+    if (part.type === 'tool-call') {
+      toolIndices.push(i);
+    } else if (part.type === 'text') {
+      textIndices.push(i);
+    }
+  });
+
+  const groups = [];
+  if (toolIndices.length > 0) {
+    groups.push({ groupKey: 'tool-calls', indices: toolIndices });
+  }
+  if (textIndices.length > 0) {
+    groups.push({ groupKey: 'text', indices: textIndices });
+  }
+
+  return groups;
+};
+
 const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root asChild>
@@ -293,13 +317,32 @@ const AssistantMessage: FC = () => {
         className="aui-assistant-message-root relative mx-auto w-full max-w-[var(--thread-max-width)] animate-in py-4 duration-200 fade-in slide-in-from-bottom-1 last:mb-24"
         data-role="assistant"
       >
-        <div className="aui-assistant-message-content mx-2 leading-7 break-words text-foreground">
-          <MessagePrimitive.Parts
-            components={{
-              Text: MarkdownText,
-              tools: { Fallback: ToolFallback },
-            }}
-          />
+        <MessagePrimitive.Unstable_PartsGrouped
+          groupingFunction={groupByContentType}
+          components={{
+            Text: MarkdownText,
+            tools: { Fallback: MCPToolCall },
+            Group: ({ groupKey, children }) => {
+              if (groupKey === 'tool-calls') {
+                // Tool calls outside the bubble
+                return <div className="mx-2 mb-3">{children}</div>;
+              }
+              if (groupKey === 'text') {
+                // Text inside the bubble
+                return (
+                  <div
+                    className="aui-assistant-message-content mx-2 leading-none break-words text-foreground rounded-3xl border shadow-2xl px-5 py-2.5 bg-muted/60"
+                  >
+                    {children}
+                  </div>
+                );
+              }
+              return <>{children}</>;
+            }
+          }}
+        />
+
+        <div className="mx-2">
           <MessageError />
         </div>
 
@@ -318,10 +361,10 @@ const AssistantActionBar: FC = () => {
       hideWhenRunning
       autohide="not-last"
       autohideFloat="single-branch"
-      className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex gap-1 text-muted-foreground data-floating:absolute data-floating:rounded-md data-floating:border data-floating:bg-background data-floating:p-1 data-floating:shadow-sm"
+      className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex gap-1 text-muted-foreground data-floating:absolute data-floating:rounded-md data-floating:border-0 data-floating:bg-transparent data-floating:p-1 data-floating:shadow-none"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy" className="h-7 w-7">
+        <TooltipIconButton tooltip="Copy" className="h-7 w-7 bg-transparent hover:bg-transparent">
           <MessagePrimitive.If copied>
             <CheckIcon className="size-3.5" />
           </MessagePrimitive.If>
@@ -331,7 +374,7 @@ const AssistantActionBar: FC = () => {
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Refresh" className="h-7 w-7">
+        <TooltipIconButton tooltip="Refresh" className="h-7 w-7 bg-transparent hover:bg-transparent">
           <RefreshCwIcon className="size-3.5" />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
@@ -343,7 +386,7 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root asChild>
       <div
-        className="aui-user-message-root mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-4 duration-200 fade-in slide-in-from-bottom-1 first:mt-3 last:mb-5 [&:where(>*)]:col-start-2"
+        className="aui-user-message-root mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-4 duration-200 fade-in slide-in-from-bottom-1 last:mb-5 [&:where(>*)]:col-start-2"
         data-role="user"
       >
         <UserMessageAttachments />
@@ -371,8 +414,8 @@ const UserActionBar: FC = () => {
       className="aui-user-action-bar-root flex flex-col items-end"
     >
       <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit" className="aui-user-action-edit p-4">
-          <PencilIcon />
+        <TooltipIconButton tooltip="Edit" className="h-7 w-7 bg-transparent hover:bg-transparent">
+          <PencilIcon className="size-3.5" />
         </TooltipIconButton>
       </ActionBarPrimitive.Edit>
     </ActionBarPrimitive.Root>

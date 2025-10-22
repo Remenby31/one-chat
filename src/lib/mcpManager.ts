@@ -3,11 +3,135 @@
 // This manager communicates via IPC
 
 import type { MCPServer, MCPTool, MCPServerCapabilities, MCPTestResult } from '@/types/mcp'
+import type { MCPServerState, MCPStateMetadata } from '@/types/mcpState'
 import { ensureValidToken } from '@/lib/mcpAuth'
+import { stateMachineManager } from '@/lib/mcpStateMachine'
 
 export class MCPManager {
-  private serverStatuses: Map<string, MCPServer['status']> = new Map()
-  private statusCallbacks: Set<(serverId: string, status: MCPServer['status']) => void> = new Set()
+  // Legacy compatibility - now delegates to state machines
+  private statusCallbacks: Set<(serverId: string, status: MCPServerState, metadata: MCPStateMetadata) => void> = new Set()
+  private exitListenerCleanup?: () => void
+
+  constructor() {
+    // Listen for process exit events from Electron
+    if (window.electronAPI?.onMcpServerExited) {
+      this.exitListenerCleanup = window.electronAPI.onMcpServerExited(async ({ serverId, exitCode }) => {
+        console.log(`[MCPManager] 🔴 Process exited: server=${serverId}, exitCode=${exitCode}`)
+
+        const machine = stateMachineManager.getMachine(serverId)
+        const currentState = machine.getState()
+        console.log(`[MCPManager] Current state: ${currentState}`)
+
+        // Determine target state based on exit code
+        const targetState = (exitCode === 0 || exitCode === null) ? 'STOPPED' : 'RUNTIME_ERROR'
+
+        // If already in the target state, just notify (ensures persistence)
+        if (currentState === targetState) {
+          console.log(`[MCPManager] Already in target state ${targetState}, notifying for persistence`)
+          this.notifyStatusChange(serverId, currentState)
+          return
+        }
+
+        // Perform appropriate transition based on current state and target
+        console.log(`[MCPManager] Transitioning from ${currentState} to ${targetState}`)
+
+        try {
+          if (exitCode === 0 || exitCode === null) {
+            // Clean exit - aim for STOPPED state
+            switch (currentState) {
+              case 'RUNNING':
+              case 'STARTING':
+                // Go through STOPPING first
+                await machine.transition('STOP')
+                await machine.transition('STOPPED', {
+                  timestamp: Date.now()
+                })
+                break
+
+              case 'STOPPING':
+                // Already stopping, just complete it
+                await machine.transition('STOPPED', {
+                  timestamp: Date.now()
+                })
+                break
+
+              case 'IDLE':
+              case 'STOPPED':
+                // Already stopped, just notify
+                break
+
+              default:
+                // Any other state (AUTH, ERROR, etc.) → go to IDLE
+                const transitioned = await machine.transition('STOP')
+                if (!transitioned) {
+                  machine.forceSetState('IDLE', { timestamp: Date.now() })
+                }
+            }
+          } else {
+            // Non-zero exit code = crash
+            await machine.transition('CRASHED', {
+              timestamp: Date.now(),
+              errorMessage: `Process exited with code ${exitCode}`,
+              userMessage: 'Server crashed unexpectedly'
+            })
+          }
+
+          console.log(`[MCPManager] ✅ Transition complete: ${currentState} → ${machine.getState()}`)
+          this.notifyStatusChange(serverId, machine.getState())
+        } catch (error) {
+          console.error(`[MCPManager] ❌ Transition failed:`, error)
+          // Force to target state if transition fails
+          machine.forceSetState(targetState === 'STOPPED' ? 'IDLE' : 'RUNTIME_ERROR', {
+            timestamp: Date.now()
+          })
+          this.notifyStatusChange(serverId, machine.getState())
+        }
+      })
+    }
+  }
+
+  /**
+   * Recover servers stuck in transient states after app restart
+   * Call this after loading servers from storage
+   */
+  async recoverStuckServers(servers: MCPServer[]): Promise<MCPServer[]> {
+    const recoveredServers = [...servers]
+
+    servers.forEach((server, index) => {
+      const machine = stateMachineManager.getMachine(server.id, server.status)
+      const currentState = machine.getState()
+
+      // Check if stuck in transient state
+      if (machine.isTransitioning()) {
+        const stateAge = Date.now() - machine.getMetadata().timestamp
+
+        console.warn(`[MCPManager] Recovering stuck server: ${server.name}, state: ${currentState}, age: ${stateAge}ms`)
+
+        // Determine appropriate recovery state
+        let recoveryState: MCPServerState = 'IDLE'
+
+        if (currentState === 'AUTHENTICATING' || currentState === 'TOKEN_REFRESHING') {
+          recoveryState = 'AUTH_REQUIRED'
+        }
+
+        // Force transition to recovery state
+        machine.forceSetState(recoveryState, {
+          timestamp: Date.now(),
+          userMessage: 'Server was recovered from stuck state after restart'
+        })
+
+        // Update server object
+        recoveredServers[index] = {
+          ...server,
+          status: recoveryState
+        }
+
+        this.notifyStatusChange(server.id, recoveryState)
+      }
+    })
+
+    return recoveredServers
+  }
 
   /**
    * Start an MCP server
@@ -18,24 +142,37 @@ export class MCPManager {
       throw new Error('MCP functionality requires Electron')
     }
 
+    const machine = stateMachineManager.getMachine(server.id, server.status)
+
     try {
-      // Check if OAuth is required but not authenticated
+      // Begin start sequence
+      await machine.transition('START')
+
+      // VALIDATING state - check authentication
       if (server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken) {
         console.log('[MCPManager] OAuth authentication required for', server.name)
-        this.updateStatus(server.id, 'needs_auth')
+        await machine.transition('AUTH_FAILURE', {
+          errorMessage: 'Authentication required. Please authenticate this server first.',
+          userMessage: 'Click the Authenticate button to authorize access.'
+        })
         throw new Error('Authentication required. Please authenticate this server first.')
       }
-
-      this.updateStatus(server.id, 'starting')
 
       // If OAuth is required, ensure we have a valid token
       if (server.requiresAuth && server.authType === 'oauth') {
         console.log('[MCPManager] Ensuring valid OAuth token for', server.name)
         try {
           server = await ensureValidToken(server)
+          // Check if token was refreshed
+          if (machine.getPreviousState() === 'TOKEN_REFRESHING') {
+            await machine.transition('REFRESH_SUCCESS')
+          }
         } catch (error) {
           console.error('[MCPManager] Failed to get valid OAuth token:', error)
-          this.updateStatus(server.id, 'needs_auth')
+          await machine.transition('REFRESH_FAILURE', {
+            errorMessage: error instanceof Error ? error.message : 'Token refresh failed',
+            userMessage: 'Your authentication has expired. Please re-authenticate.'
+          })
           throw new Error('OAuth token invalid or expired. Please re-authenticate.')
         }
       }
@@ -69,17 +206,35 @@ export class MCPManager {
         console.log('[MCPManager] Injected auth token into environment')
       }
 
+      // Transition to STARTING
+      await machine.transition('STARTED')
+
+      // Actually start the server process
       const result = await window.electronAPI.mcpStartServer(server)
 
       if (result.success) {
-        this.updateStatus(server.id, 'running')
+        await machine.transition('STARTED', {
+          timestamp: Date.now()
+        })
       } else {
-        this.updateStatus(server.id, 'error')
+        await machine.transition('START_FAILED', {
+          errorMessage: result.error || 'Failed to start server',
+          userMessage: 'Server failed to start. Check configuration and try again.'
+        })
         throw new Error(result.error || 'Failed to start server')
       }
     } catch (error) {
-      this.updateStatus(server.id, 'error')
+      // If not already in error state, transition there
+      if (!machine.isError()) {
+        await machine.transition('START_FAILED', {
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorStack: error instanceof Error ? error.stack : undefined
+        })
+      }
       throw error
+    } finally {
+      // Update legacy callbacks
+      this.notifyStatusChange(server.id, machine.getState())
     }
   }
 
@@ -91,16 +246,84 @@ export class MCPManager {
       throw new Error('MCP functionality requires Electron')
     }
 
-    try {
-      this.updateStatus(serverId, 'stopped')
-      const result = await window.electronAPI.mcpStopServer(serverId)
+    const machine = stateMachineManager.getMachine(serverId)
+    const currentState = machine.getState()
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to stop server')
+    console.log(`[MCPManager] 🛑 stopServer called: server=${serverId}, state=${currentState}`)
+
+    try {
+      // If already stopped/idle, no need to do anything
+      if (currentState === 'IDLE' || currentState === 'STOPPED') {
+        console.log(`[MCPManager] Server ${serverId} already stopped (state: ${currentState})`)
+        this.notifyStatusChange(serverId, currentState)
+        return
+      }
+
+      // Begin stop sequence - transition to STOPPING
+      const transitioned = await machine.transition('STOP')
+
+      if (!transitioned) {
+        console.warn(`[MCPManager] Failed to transition to STOP from ${currentState}`)
+        // Force stop anyway by going to IDLE
+        machine.forceSetState('IDLE', {
+          timestamp: Date.now()
+        })
+        this.notifyStatusChange(serverId, machine.getState())
+        return
+      }
+
+      console.log(`[MCPManager] Transitioned to ${machine.getState()}, calling backend to kill process`)
+
+      // Only call backend if server might actually be running
+      const targetState = machine.getState()
+      const shouldCallBackend = targetState !== 'IDLE' && targetState !== 'STOPPED'
+
+      if (shouldCallBackend) {
+        const result = await window.electronAPI.mcpStopServer(serverId)
+        console.log(`[MCPManager] Backend mcpStopServer result:`, result)
+
+        if (!result.success && result.error && !result.error.includes('not running')) {
+          // Only transition to error if it's a real error (not "already stopped")
+          console.error(`[MCPManager] Backend failed to stop server:`, result.error)
+          await machine.transition('CRASHED', {
+            errorMessage: result.error,
+            userMessage: 'Server may not have stopped properly'
+          })
+          throw new Error(result.error)
+        }
+
+        console.log(`[MCPManager] Process kill signal sent, waiting for exit event (5s timeout)`)
+
+        // Wait for exit event with timeout
+        const exitEventReceived = await this.waitForStateChange(
+          serverId,
+          machine.getState(),
+          5000 // 5 second timeout
+        )
+
+        if (!exitEventReceived) {
+          console.warn(`[MCPManager] Timeout waiting for exit event, forcing STOPPED state`)
+          await machine.transition('STOPPED', {
+            timestamp: Date.now(),
+            userMessage: 'Server stopped (timeout recovery)'
+          })
+        }
+      } else {
+        console.log(`[MCPManager] No backend call needed, already in final state: ${targetState}`)
       }
     } catch (error) {
-      this.updateStatus(serverId, 'error')
+      console.error(`[MCPManager] stopServer error:`, error)
+      if (!machine.isError()) {
+        await machine.transition('CRASHED', {
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorStack: error instanceof Error ? error.stack : undefined
+        })
+      }
       throw error
+    } finally {
+      const finalState = machine.getState()
+      console.log(`[MCPManager] stopServer complete: final state=${finalState}`)
+      this.notifyStatusChange(serverId, finalState)
     }
   }
 
@@ -177,7 +400,8 @@ export class MCPManager {
       }
     }
 
-    const wasRunning = this.getServerStatus(server.id) === 'running'
+    const machine = stateMachineManager.getMachine(server.id, server.status)
+    const wasRunning = machine.isRunning()
     let shouldStop = false
 
     try {
@@ -284,14 +508,23 @@ export class MCPManager {
   /**
    * Get current status of a server
    */
-  getServerStatus(serverId: string): MCPServer['status'] {
-    return this.serverStatuses.get(serverId) || 'idle'
+  getServerStatus(serverId: string): MCPServerState {
+    const machine = stateMachineManager.getMachine(serverId, 'IDLE')
+    return machine.getState()
+  }
+
+  /**
+   * Get server state metadata
+   */
+  getServerMetadata(serverId: string): MCPStateMetadata {
+    const machine = stateMachineManager.getMachine(serverId, 'IDLE')
+    return machine.getMetadata()
   }
 
   /**
    * Register a callback for status changes
    */
-  onStatusChange(callback: (serverId: string, status: MCPServer['status']) => void): () => void {
+  onStatusChange(callback: (serverId: string, status: MCPServerState, metadata: MCPStateMetadata) => void): () => void {
     this.statusCallbacks.add(callback)
     // Return unsubscribe function
     return () => {
@@ -300,11 +533,47 @@ export class MCPManager {
   }
 
   /**
-   * Update server status and notify listeners
+   * Wait for a state change with timeout
+   * Returns true if state changed, false on timeout
    */
-  private updateStatus(serverId: string, status: MCPServer['status']): void {
-    this.serverStatuses.set(serverId, status)
-    this.statusCallbacks.forEach(callback => callback(serverId, status))
+  private waitForStateChange(
+    serverId: string,
+    currentState: MCPServerState,
+    timeoutMs: number
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      const machine = stateMachineManager.getMachine(serverId)
+      let timeoutId: NodeJS.Timeout
+
+      const unsubscribe = machine.onStateChange(() => {
+        if (machine.getState() !== currentState) {
+          clearTimeout(timeoutId)
+          unsubscribe()
+          resolve(true)
+        }
+      })
+
+      timeoutId = setTimeout(() => {
+        unsubscribe()
+        resolve(false)
+      }, timeoutMs)
+    })
+  }
+
+  /**
+   * Notify listeners of status change (internal helper)
+   */
+  private notifyStatusChange(serverId: string, status: MCPServerState): void {
+    const machine = stateMachineManager.getMachine(serverId)
+    const metadata = machine.getMetadata()
+
+    this.statusCallbacks.forEach(callback => {
+      try {
+        callback(serverId, status, metadata)
+      } catch (error) {
+        console.error('[MCPManager] Status callback error:', error)
+      }
+    })
   }
 
   /**
@@ -323,9 +592,10 @@ export class MCPManager {
    * Stop all running servers
    */
   async stopAllServers(servers: MCPServer[]): Promise<void> {
-    const runningServers = servers.filter(s =>
-      this.getServerStatus(s.id) === 'running' || this.getServerStatus(s.id) === 'starting'
-    )
+    const runningServers = servers.filter(s => {
+      const machine = stateMachineManager.getMachine(s.id, s.status)
+      return machine.isRunning() || machine.getState() === 'STARTING'
+    })
 
     // Stop servers in parallel
     await Promise.allSettled(

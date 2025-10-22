@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { Toaster } from '@/components/ui/sonner'
 import { Thread } from '@/components/assistant-ui/thread'
 import { Sidebar } from '@/components/Sidebar'
 import { Settings } from '@/components/Settings'
 import { ModelSelector } from '@/components/ModelSelector'
 import { FlickeringGrid } from '@/components/ui/flickering-grid'
 import type { ModelConfig } from '@/types/model'
+import type { ApiKey } from '@/types/apiKey'
 import type { MCPServer } from '@/types/mcp'
 import { useMCPRuntime } from '@/lib/useMCPRuntime'
 import { mcpManager } from '@/lib/mcpManager'
 import { useOAuthCallback } from '@/hooks/useOAuthCallback'
+import { showSuccessToast, showOAuthErrorToast, showGlobalErrorToast } from '@/lib/errorToast'
 
 // ============================================
 // PARAMÈTRES DE LA GRILLE SCINTILLANTE ET UI
@@ -56,6 +59,7 @@ function App() {
   const [settingsTab, setSettingsTab] = useState('models')
   const [currentModel, setCurrentModel] = useState<ModelConfig | null>(null)
   const [models, setModels] = useState<ModelConfig[]>([])
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
 
   // Load saved model and MCP servers on mount
@@ -64,8 +68,13 @@ function App() {
       if (window.electronAPI) {
         // Use Electron file storage
         const savedModels = await window.electronAPI.readConfig('models.json')
+        const savedApiKeys = await window.electronAPI.readConfig('apiKeys.json')
         const selectedModelId = await window.electronAPI.readConfig('selectedModel.json')
         const savedMcpServers = await window.electronAPI.readConfig('mcpServers.json')
+
+        if (savedApiKeys) {
+          setApiKeys(savedApiKeys)
+        }
 
         if (savedModels) {
           setModels(savedModels)
@@ -78,15 +87,26 @@ function App() {
         }
 
         if (savedMcpServers) {
-          setMcpServers(savedMcpServers)
+          // Recover stuck servers first
+          const recoveredServers = await mcpManager.recoverStuckServers(savedMcpServers)
+          setMcpServers(recoveredServers)
+
+          // Save recovered state
+          await window.electronAPI.writeConfig('mcpServers.json', recoveredServers)
+
           // Start enabled servers
-          await mcpManager.startEnabledServers(savedMcpServers)
+          await mcpManager.startEnabledServers(recoveredServers)
         }
       } else {
         // Fallback to localStorage for development
         const savedModels = localStorage.getItem("models")
+        const savedApiKeys = localStorage.getItem("apiKeys")
         const selectedModelId = localStorage.getItem("selectedModel")
         const savedMcpServers = localStorage.getItem("mcpServers")
+
+        if (savedApiKeys) {
+          setApiKeys(JSON.parse(savedApiKeys))
+        }
 
         if (savedModels) {
           const parsedModels = JSON.parse(savedModels)
@@ -113,6 +133,31 @@ function App() {
       if (window.electronAPI) {
         mcpManager.stopAllServers(mcpServers)
       }
+    }
+  }, [])
+
+  // Global error handlers
+  useEffect(() => {
+    // Handle uncaught errors
+    const handleError = (event: ErrorEvent) => {
+      console.error('[Global] Uncaught error:', event.error)
+      showGlobalErrorToast(event.error || event.message)
+      event.preventDefault() // Prevent default browser error handling
+    }
+
+    // Handle unhandled promise rejections
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('[Global] Unhandled promise rejection:', event.reason)
+      showGlobalErrorToast(event.reason)
+      event.preventDefault() // Prevent default browser error handling
+    }
+
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
     }
   }, [])
 
@@ -154,13 +199,14 @@ function App() {
         }
       }
 
-      // TODO: Show success notification
+      // Show success notification
       console.log('[App] OAuth flow completed successfully')
+      showSuccessToast('OAuth Authentication Successful', 'MCP server authenticated successfully')
     },
     (error) => {
       console.error('[App] OAuth error:', error)
-      // TODO: Show error notification
-      alert(`OAuth authentication failed: ${error.message}`)
+      // Show error notification
+      showOAuthErrorToast(error)
     }
   )
 
@@ -271,12 +317,14 @@ function App() {
               <ModelSelector
                 models={models}
                 currentModel={currentModel}
+                apiKeys={apiKeys}
                 onModelChange={handleModelChange}
                 onAddModel={() => openSettingsTab('models')}
+                opacity={GRID_CONFIG.uiOpacity}
               />
             </div>
 
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden">
               <Thread
                 mcpServers={mcpServers}
                 onMcpToggle={handleMcpToggle}
@@ -295,6 +343,7 @@ function App() {
             defaultTab={settingsTab}
           />
         </div>
+        <Toaster position="top-right" />
       </AssistantRuntimeProvider>
     </TooltipProvider>
   )

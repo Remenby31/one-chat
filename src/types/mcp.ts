@@ -1,6 +1,9 @@
 // MCP Server types and interfaces
 
-export type MCPServerStatus = 'idle' | 'starting' | 'running' | 'error' | 'stopped' | 'needs_auth';
+import type { MCPServerState, MCPStateMetadata } from './mcpState'
+
+// Legacy type alias for backwards compatibility
+export type MCPServerStatus = MCPServerState
 
 export type MCPAuthType = 'oauth' | 'token' | 'none';
 
@@ -35,11 +38,14 @@ export interface MCPServer {
   authToken?: string; // For simple token auth
   oauthConfig?: MCPOAuthConfig;
 
-  // Runtime state
-  status: MCPServerStatus;
-  error?: string;
-  connectedAt?: string;
-  lastError?: string;
+  // Runtime state - now using robust state machine
+  status: MCPServerState; // Current state from state machine
+  stateMetadata?: MCPStateMetadata; // Additional state context
+
+  // Legacy fields (deprecated, kept for backwards compatibility)
+  error?: string; // Deprecated: use stateMetadata.errorMessage
+  connectedAt?: string; // Deprecated: use stateMetadata.timestamp
+  lastError?: string; // Deprecated: use stateMetadata.errorMessage
 
   // Metadata - All optional for simplified setup
   description?: string;

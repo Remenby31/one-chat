@@ -3,9 +3,11 @@
  *
  * Implements OAuth 2.1 with PKCE (Proof Key for Code Exchange) for MCP servers.
  * Supports authorization code flow with automatic token refresh.
+ * Integrates with state machine for proper state transitions.
  */
 
 import type { MCPServer, MCPOAuthState } from '@/types/mcp'
+import { stateMachineManager } from '@/lib/mcpStateMachine'
 
 // ========================================
 // PKCE Helper Functions
@@ -163,6 +165,7 @@ function consumeOAuthState(stateId: string): void {
  * 2. Creates OAuth state for tracking
  * 3. Constructs authorization URL with all parameters
  * 4. Opens URL in system browser
+ * 5. Transitions server state to AUTHENTICATING
  *
  * User will authenticate in browser and be redirected to jarvis://oauth/callback
  *
@@ -177,6 +180,13 @@ export async function startOAuthFlow(server: MCPServer): Promise<void> {
   // Some MCP servers may not require it, or use a default public client_id
 
   console.log('[OAuth] Starting OAuth flow for server:', server.name)
+
+  // Transition to AUTHENTICATING state
+  const machine = stateMachineManager.getMachine(server.id, server.status)
+  await machine.transition('AUTHENTICATE', {
+    authUrl: server.oauthConfig.authUrl,
+    userMessage: 'Complete authentication in your browser'
+  })
 
   // Generate PKCE parameters
   const codeVerifier = generateCodeVerifier()
@@ -250,6 +260,19 @@ export async function handleOAuthCallback(
   if (error) {
     const message = errorDescription || error
     console.error('[OAuth] Authorization error:', message)
+
+    // Try to get the state to update the machine
+    if (state) {
+      const oauthState = getOAuthState(state)
+      if (oauthState) {
+        const machine = stateMachineManager.getMachine(oauthState.serverId)
+        await machine.transition('AUTH_FAILURE', {
+          errorMessage: `OAuth error: ${message}`,
+          userMessage: 'Authentication failed. Please try again.'
+        })
+      }
+    }
+
     throw new Error(`OAuth error: ${message}`)
   }
 
@@ -366,6 +389,13 @@ export async function handleOAuthCallback(
       oauthConfig.tokenExpiresAt = Date.now() + (tokens.expires_in * 1000)
     }
 
+    // Transition to AUTH_SUCCESS
+    const machine = stateMachineManager.getMachine(oauthState.serverId)
+    await machine.transition('AUTH_SUCCESS', {
+      tokenExpiresAt: oauthConfig.tokenExpiresAt,
+      userMessage: 'Authentication successful!'
+    })
+
     // Save updated configuration only if server was already saved
     if (serverToUpdate) {
       let mcpServers: MCPServer[] = []
@@ -411,6 +441,7 @@ export async function handleOAuthCallback(
  * Refreshes an expired OAuth access token
  *
  * Uses the refresh token to obtain a new access token without user interaction
+ * Updates state machine with refresh progress
  *
  * @param server - MCP server with OAuth configuration and refresh token
  * @returns Updated server with new tokens
@@ -425,6 +456,14 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
   }
 
   console.log('[OAuth] Refreshing token for server:', server.name)
+
+  // Transition to TOKEN_REFRESHING if not already there
+  const machine = stateMachineManager.getMachine(server.id, server.status)
+  if (machine.getState() !== 'TOKEN_REFRESHING') {
+    await machine.transition('TOKEN_EXPIRED', {
+      userMessage: 'Refreshing authentication token...'
+    })
+  }
 
   try {
     const tokenParams: Record<string, string> = {
@@ -468,9 +507,22 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
       server.oauthConfig.tokenExpiresAt = Date.now() + (tokens.expires_in * 1000)
     }
 
+    // Transition to REFRESH_SUCCESS (this will move to STARTING if in start sequence)
+    await machine.transition('REFRESH_SUCCESS', {
+      tokenExpiresAt: server.oauthConfig.tokenExpiresAt,
+      userMessage: 'Token refreshed successfully'
+    })
+
     return server
   } catch (error) {
     console.error('[OAuth] Token refresh error:', error)
+
+    // Transition to REFRESH_FAILURE
+    await machine.transition('REFRESH_FAILURE', {
+      errorMessage: error instanceof Error ? error.message : 'Token refresh failed',
+      userMessage: 'Failed to refresh authentication. Please re-authenticate.'
+    })
+
     throw error
   }
 }

@@ -95,7 +95,7 @@ async function fetchResourceMetadata(url: string): Promise<ResourceMetadata> {
  */
 async function registerDynamicClient(
   registrationEndpoint: string,
-  appName: string = 'Jarvis MCP Client'
+  appName: string = 'Jarvis'
 ): Promise<{
   client_id: string
   client_secret?: string
@@ -283,7 +283,7 @@ export async function discoverOAuthConfig(url: string): Promise<OAuthDiscoveryRe
       try {
         const registration = await registerDynamicClient(
           authServerMetadata.registration_endpoint,
-          'Jarvis MCP Client'
+          'Jarvis'
         )
 
         // Add obtained client_id and client_secret to config

@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { showReactErrorToast } from '@/lib/errorToast'
 
 interface Props {
   children: ReactNode
@@ -23,6 +24,8 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo)
+    // Show error toast notification
+    showReactErrorToast(error, errorInfo)
   }
 
   public render() {

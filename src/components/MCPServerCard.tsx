@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Trash2, Activity, Plug2, Circle, LoaderCircle } from "lucide-react"
+import { Trash2, Activity, Plug2, Circle, LoaderCircle, AlertCircle, ShieldAlert, ShieldX, CheckCircle, XCircle } from "lucide-react"
 import type { MCPServer } from "@/types/mcp"
+import { STATE_UI_CONFIG, ACTIVE_STATES, ATTENTION_REQUIRED_STATES } from "@/types/mcpState"
 import { cn } from "@/lib/utils"
 
 interface MCPServerCardProps {
@@ -10,43 +11,62 @@ interface MCPServerCardProps {
   onDelete: (id: string) => void
   onTest?: (id: string) => void
   onAuthenticate?: (id: string) => void
+  onRetry?: (id: string) => void
+  onClick?: (id: string) => void
   isTesting?: boolean
 }
 
-export function MCPServerCard({ server, onToggle, onDelete, onTest, onAuthenticate, isTesting = false }: MCPServerCardProps) {
+export function MCPServerCard({
+  server,
+  onToggle,
+  onDelete,
+  onTest,
+  onAuthenticate,
+  onRetry,
+  onClick,
+  isTesting = false
+}: MCPServerCardProps) {
 
-  const getStatusColor = (status: MCPServer['status']) => {
-    switch (status) {
-      case 'running':
-        return 'text-green-500'
+  // Get UI config from state machine definitions
+  const stateConfig = STATE_UI_CONFIG[server.status]
+
+  const getStatusColor = () => {
+    switch (stateConfig.color) {
+      case 'success':
+        return 'text-green-400'
       case 'error':
-        return 'text-red-500'
-      case 'starting':
-        return 'text-yellow-500'
-      case 'needs_auth':
-        return 'text-orange-500'
-      case 'stopped':
-      case 'idle':
+        return 'text-red-400'
+      case 'warning':
+        return 'text-orange-400'
+      case 'info':
+        return 'text-blue-400'
+      case 'primary':
+        return 'text-primary'
       default:
         return 'text-gray-400'
     }
   }
 
-  const getStatusText = (status: MCPServer['status']) => {
-    switch (status) {
-      case 'running':
-        return 'Connected'
-      case 'error':
-        return 'Error'
-      case 'starting':
-        return 'Starting...'
-      case 'needs_auth':
-        return 'Needs Auth'
-      case 'stopped':
-        return 'Stopped'
-      case 'idle':
+  const getStatusIcon = () => {
+    // Show spinner for active states
+    if (ACTIVE_STATES.includes(server.status)) {
+      return <LoaderCircle className="h-3 w-3 animate-spin" />
+    }
+
+    // State-specific icons
+    switch (server.status) {
+      case 'RUNNING':
+        return <CheckCircle className="h-3 w-3" />
+      case 'AUTH_REQUIRED':
+      case 'AUTHENTICATING':
+        return <ShieldAlert className="h-3 w-3" />
+      case 'AUTH_FAILED':
+        return <ShieldX className="h-3 w-3" />
+      case 'CONFIG_ERROR':
+      case 'RUNTIME_ERROR':
+        return <XCircle className="h-3 w-3" />
       default:
-        return 'Idle'
+        return <Circle className="h-3 w-3" />
     }
   }
 
@@ -69,16 +89,26 @@ export function MCPServerCard({ server, onToggle, onDelete, onTest, onAuthentica
     return null
   }
 
+  // Determine if server needs attention
+  const needsAttention = ATTENTION_REQUIRED_STATES.includes(server.status)
+  const isActive = ACTIVE_STATES.includes(server.status)
+
   return (
     <div
       className={cn(
         "group relative rounded-lg border p-4 transition-colors hover:border-primary/50",
-        server.enabled && server.status === 'running' ? "border-primary/50 bg-accent/30" : ""
+        server.enabled && server.status === 'RUNNING' ? "border-primary/50 bg-accent/30" : "",
+        needsAttention ? "border-orange-400/50" : "",
+        isActive ? "border-blue-400 animate-[mcp-loading-pulse_2s_ease-in-out_infinite]" : ""
       )}
     >
       <div className="flex items-start justify-between gap-3">
         {/* Icon and Info */}
-        <div className="flex items-start gap-3 flex-1">
+        <button
+          onClick={() => onClick?.(server.id)}
+          className="flex items-start gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
+          disabled={!onClick}
+        >
           <div className="relative mt-1">
             {getIcon(server.icon)}
             <Plug2 className={cn("h-5 w-5", server.icon ? "hidden" : "")} />
@@ -87,46 +117,80 @@ export function MCPServerCard({ server, onToggle, onDelete, onTest, onAuthentica
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2 mb-1">
               <span className="font-semibold truncate">{server.name}</span>
-              {server.status === 'needs_auth' && onAuthenticate ? (
-                <button
-                  onClick={() => onAuthenticate(server.id)}
-                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 transition-colors cursor-pointer"
-                  title="Click to authenticate"
-                >
-                  <Circle className="h-2 w-2 fill-current text-orange-500" />
-                  <span className="font-medium text-orange-500">
-                    Needs Auth
-                  </span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-1 text-xs">
-                  <Circle className={cn("h-2 w-2 fill-current", getStatusColor(server.status))} />
-                  <span className={cn("font-medium", getStatusColor(server.status))}>
-                    {getStatusText(server.status)}
-                  </span>
-                </div>
-              )}
             </div>
 
+            {/* Description */}
             {server.description && (
               <p className="text-sm text-muted-foreground mb-2">{server.description}</p>
             )}
+
+            {/* State message or error */}
+            {server.stateMetadata?.userMessage && (
+              <p className="text-xs text-muted-foreground italic">
+                {server.stateMetadata.userMessage}
+              </p>
+            )}
+            {server.stateMetadata?.errorMessage && (
+              <p className="text-xs text-red-400 mt-1">
+                {server.stateMetadata.errorMessage}
+              </p>
+            )}
           </div>
-        </div>
+        </button>
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          {/* Status Badge */}
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className={cn("fill-current", getStatusColor())}>
+              {getStatusIcon()}
+            </span>
+            <span className={cn("font-medium", getStatusColor())}>
+              {stateConfig.label}
+            </span>
+          </div>
+
           <Switch
             checked={server.enabled}
             onCheckedChange={(checked) => onToggle(server.id, checked)}
             className="data-[state=checked]:bg-primary"
+            disabled={isActive}
           />
 
           <div className={cn(
-            "flex gap-1 transition-opacity",
-            isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            "flex gap-1 transition-opacity duration-200",
+            isTesting || needsAttention ? "opacity-100" : "opacity-60 group-hover:opacity-100"
           )}>
-            {onTest && (
+            {/* Authenticate button for auth states */}
+            {(server.status === 'AUTH_REQUIRED' || server.status === 'AUTH_FAILED') && onAuthenticate && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => onAuthenticate(server.id)}
+                title="Authenticate this server"
+              >
+                <ShieldAlert className="h-3 w-3 mr-1" />
+                Authenticate
+              </Button>
+            )}
+
+            {/* Retry button for error states */}
+            {(server.status === 'CONFIG_ERROR' || server.status === 'RUNTIME_ERROR') && onRetry && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => onRetry(server.id)}
+                title="Retry starting the server"
+              >
+                <Activity className="h-3 w-3 mr-1" />
+                Retry
+              </Button>
+            )}
+
+            {/* Test connection button */}
+            {onTest && !isActive && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -136,21 +200,23 @@ export function MCPServerCard({ server, onToggle, onDelete, onTest, onAuthentica
                 disabled={isTesting}
               >
                 {isTesting ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" />
                 ) : (
-                  <Activity className="h-4 w-4" />
+                  <Activity className="h-4 w-4 text-muted-foreground" />
                 )}
               </Button>
             )}
 
+            {/* Delete button */}
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
               onClick={() => onDelete(server.id)}
               title="Delete server"
+              disabled={isActive}
             >
-              <Trash2 className="h-4 w-4 text-destructive" />
+              <Trash2 className="h-4 w-4 text-muted-foreground" />
             </Button>
           </div>
         </div>

@@ -17,7 +17,7 @@ export const Sidebar: FC<SidebarProps> = ({ onSettingsClick, onNewChat, opacity 
     <div
       className={cn(
         "flex flex-col h-full transition-all duration-300 ease-in-out",
-        isCollapsed ? "w-12 border-none" : "w-64 border-r backdrop-blur-sm"
+        isCollapsed ? "w-12 border-none" : "w-64 border-r"
       )}
       style={!isCollapsed ? { backgroundColor: `hsl(var(--background) / ${opacity}%)` } : undefined}
     >

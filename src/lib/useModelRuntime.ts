@@ -3,6 +3,7 @@ import type { ChatModelRunOptions } from '@assistant-ui/react'
 import { useMemo } from 'react'
 import type { ModelConfig } from '@/types/model'
 import type { ApiKey } from '@/types/apiKey'
+import { showApiErrorToast } from '@/lib/errorToast'
 
 export function useModelRuntime(modelConfig: ModelConfig | null) {
   // Create a chat model adapter
@@ -159,59 +160,14 @@ export function useModelRuntime(modelConfig: ModelConfig | null) {
         } catch (error) {
           console.error('[useModelRuntime] Error in run', error)
 
-          // Parse error message to extract detailed information
-          let errorMessage = 'Unknown error'
-          let errorDetails = ''
+          // Show error toast instead of displaying in chat
+          showApiErrorToast(error)
 
-          if (error instanceof Error) {
-            const errorMsg = error.message
-
-            // Try to extract HTTP status and JSON error details
-            const httpMatch = errorMsg.match(/HTTP (\d+): (.+)/)
-            if (httpMatch) {
-              const statusCode = httpMatch[1]
-              const jsonPart = httpMatch[2]
-
-              try {
-                const errorData = JSON.parse(jsonPart)
-                if (errorData.error) {
-                  const { message, type, code } = errorData.error
-
-                  // Create a user-friendly error message based on status code
-                  if (statusCode === '429') {
-                    errorMessage = '⚠️ API Quota Exceeded'
-                    errorDetails = `\n\n**Error:** ${message}\n\n**Type:** ${type}\n**Code:** ${code}\n\nPlease check your API plan and billing details.`
-                  } else if (statusCode === '401') {
-                    errorMessage = '🔒 Authentication Failed'
-                    errorDetails = `\n\n**Error:** ${message}\n\n**Type:** ${type}\n**Code:** ${code}\n\nPlease verify your API key in Settings.`
-                  } else if (statusCode === '404') {
-                    errorMessage = '❌ Endpoint Not Found'
-                    errorDetails = `\n\n**Error:** ${message}\n\n**Type:** ${type}\n**Code:** ${code}\n\nPlease check your model configuration in Settings.`
-                  } else if (statusCode === '500' || statusCode === '502' || statusCode === '503') {
-                    errorMessage = '🔧 Server Error'
-                    errorDetails = `\n\n**Error:** ${message}\n\n**Type:** ${type}\n**Code:** ${code}\n**Status:** HTTP ${statusCode}\n\nThe API server is experiencing issues. Please try again later.`
-                  } else {
-                    errorMessage = `⚠️ API Error (HTTP ${statusCode})`
-                    errorDetails = `\n\n**Error:** ${message}\n\n**Type:** ${type}\n**Code:** ${code}`
-                  }
-                }
-              } catch {
-                // If JSON parsing fails, use the raw message
-                errorMessage = `⚠️ API Error (HTTP ${statusCode})`
-                errorDetails = `\n\n**Error:** ${errorMsg}`
-              }
-            } else {
-              // No HTTP status found, use the error message as-is
-              errorMessage = '❌ Connection Error'
-              errorDetails = `\n\n**Error:** ${errorMsg}\n\nPlease check your network connection and model configuration in Settings.`
-            }
-          }
-
-          // Yield error message
+          // Optionally, still yield a brief error message in chat
           yield {
             content: [{
               type: 'text' as const,
-              text: `${errorMessage}${errorDetails}`
+              text: 'An error occurred while processing your request. Please check the notification for details.'
             }]
           }
         }

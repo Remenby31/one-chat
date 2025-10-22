@@ -19,8 +19,59 @@ interface MCPServerProcess {
   pendingRequests: Map<number, { resolve: (value: any) => void; reject: (reason?: any) => void }>;
 }
 
+type MCPLogType = 'stdout' | 'stderr' | 'error' | 'jsonrpc' | 'system';
+
+interface MCPLogEntry {
+  id: string;
+  serverId: string;
+  type: MCPLogType;
+  message: string;
+  timestamp: number;
+  data?: any;
+}
+
 class MCPProcessManager {
   private processes: Map<string, MCPServerProcess> = new Map();
+  private logs: Map<string, MCPLogEntry[]> = new Map();
+  private readonly MAX_LOGS_PER_SERVER = 1000;
+  private logIdCounter = 0;
+
+  private addLog(serverId: string, type: MCPLogType, message: string, data?: any): void {
+    const logEntry: MCPLogEntry = {
+      id: `${serverId}-${this.logIdCounter++}`,
+      serverId,
+      type,
+      message,
+      timestamp: Date.now(),
+      data,
+    };
+
+    // Get or create log array for this server
+    if (!this.logs.has(serverId)) {
+      this.logs.set(serverId, []);
+    }
+
+    const serverLogs = this.logs.get(serverId)!;
+    serverLogs.push(logEntry);
+
+    // Maintain circular buffer
+    if (serverLogs.length > this.MAX_LOGS_PER_SERVER) {
+      serverLogs.shift();
+    }
+
+    // Emit log to renderer in real-time
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mcp:log', logEntry);
+    }
+  }
+
+  getLogs(serverId: string): MCPLogEntry[] {
+    return this.logs.get(serverId) || [];
+  }
+
+  clearLogs(serverId: string): void {
+    this.logs.set(serverId, []);
+  }
 
   startServer(server: any): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve) => {
@@ -33,6 +84,7 @@ class MCPProcessManager {
         }
 
         console.log(`[MCP] Starting server ${id}: ${command} ${args.join(' ')}`);
+        this.addLog(id, 'system', `Starting server: ${command} ${args.join(' ')}`);
 
         // Capture stderr for error reporting
         let stderrBuffer = '';
@@ -103,7 +155,8 @@ class MCPProcessManager {
         // Handle stdout (JSON-RPC responses)
         let buffer = '';
         childProcess.stdout.on('data', (data) => {
-          buffer += data.toString();
+          const text = data.toString();
+          buffer += text;
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
@@ -111,9 +164,12 @@ class MCPProcessManager {
             if (line.trim()) {
               try {
                 const message = JSON.parse(line);
+                this.addLog(id, 'jsonrpc', line, message);
                 this.handleMessage(id, message);
               } catch (error) {
+                // Not JSON, treat as regular stdout
                 console.error(`[MCP ${id}] Failed to parse message:`, line, error);
+                this.addLog(id, 'stdout', line);
               }
             }
           }
@@ -124,23 +180,32 @@ class MCPProcessManager {
           const text = data.toString();
           stderrBuffer += text;
           console.log(`[MCP ${id}] stderr:`, text);
+          this.addLog(id, 'stderr', text.trim());
         });
 
         // Handle process exit
         childProcess.on('exit', (code) => {
           console.log(`[MCP ${id}] Process exited with code ${code}`);
+          this.addLog(id, 'system', `Process exited with code ${code}`);
           this.processes.delete(id);
+
+          // Notify renderer that process exited
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('mcp:server-exited', { serverId: id, exitCode: code });
+          }
 
           // If process exits early with error code and we haven't resolved yet
           if (!hasResolved && code !== 0) {
             hasResolved = true;
             const errorMsg = stderrBuffer.trim() || `Process exited with code ${code}`;
+            this.addLog(id, 'error', errorMsg);
             resolve({ success: false, error: errorMsg });
           }
         });
 
         childProcess.on('error', (error: any) => {
           console.error(`[MCP ${id}] Process error:`, error);
+          this.addLog(id, 'error', error.message, error);
           this.processes.delete(id);
 
           if (!hasResolved) {
@@ -149,6 +214,7 @@ class MCPProcessManager {
             // Provide helpful error message for ENOENT (command not found)
             if (error.code === 'ENOENT') {
               const errorMsg = `Command not found: ${command}\n\nMake sure Node.js and npm are installed and in your PATH.\nYou can verify by running 'node --version' and 'npm --version' in a terminal.`;
+              this.addLog(id, 'error', errorMsg);
               resolve({ success: false, error: errorMsg });
             } else {
               resolve({ success: false, error: error.message });
@@ -161,9 +227,11 @@ class MCPProcessManager {
           if (!hasResolved) {
             hasResolved = true;
             if (this.processes.has(id)) {
+              this.addLog(id, 'system', 'Server started successfully');
               resolve({ success: true });
             } else {
               const errorMsg = stderrBuffer.trim() || 'Process failed to start';
+              this.addLog(id, 'error', errorMsg);
               resolve({ success: false, error: errorMsg });
             }
           }
@@ -183,10 +251,13 @@ class MCPProcessManager {
       }
 
       try {
+        this.addLog(serverId, 'system', 'Stopping server...');
         serverProcess.process.kill();
         this.processes.delete(serverId);
+        this.addLog(serverId, 'system', 'Server stopped successfully');
         resolve({ success: true });
       } catch (error: any) {
+        this.addLog(serverId, 'error', `Failed to stop server: ${error.message}`);
         resolve({ success: false, error: error.message });
       }
     });
@@ -345,43 +416,8 @@ function createWindow() {
     show: false
   });
 
-  // Create minimal menu with DevTools shortcuts
-  const template: any[] = [
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Toggle DevTools',
-          accelerator: process.platform === 'darwin' ? 'Cmd+Alt+I' : 'F12',
-          click: () => {
-            mainWindow?.webContents.toggleDevTools();
-          }
-        },
-        {
-          label: 'Reload',
-          accelerator: 'CmdOrCtrl+R',
-          click: () => {
-            mainWindow?.webContents.reload();
-          }
-        }
-      ]
-    }
-  ];
-
-  // Add app menu on macOS
-  if (process.platform === 'darwin') {
-    template.unshift({
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    });
-  }
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+  // Remove application menu (no menu bar)
+  Menu.setApplicationMenu(null);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -714,6 +750,25 @@ ipcMain.handle('mcp:call-tool', async (_event, serverId: string, toolName: strin
       arguments: args,
     });
     return { success: true, result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// MCP Logs IPC handlers
+ipcMain.handle('mcp:get-logs', async (_event, serverId: string) => {
+  try {
+    const logs = mcpProcessManager.getLogs(serverId);
+    return { success: true, logs };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('mcp:clear-logs', async (_event, serverId: string) => {
+  try {
+    mcpProcessManager.clearLogs(serverId);
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
