@@ -83,7 +83,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
    */
   loadThreads: async () => {
     set({ isLoading: true })
-    console.log('[ThreadStore] Loading threads')
 
     try {
       let threadFiles: string[] = []
@@ -96,8 +95,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         const keys = Object.keys(localStorage)
         threadFiles = keys.filter(k => k.startsWith('thread_') && k.endsWith('.json'))
       }
-
-      console.log(`[ThreadStore] Found ${threadFiles.length} thread files`)
 
       // Load metadata for each thread
       const threads: ThreadMetadata[] = []
@@ -136,7 +133,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       // Sort by updatedAt (most recent first)
       threads.sort((a, b) => b.updatedAt - a.updatedAt)
 
-      console.log(`[ThreadStore] Loaded ${threads.length} threads`)
       set({ threads, isLoading: false })
     } catch (error) {
       console.error('[ThreadStore] Failed to load threads:', error)
@@ -148,8 +144,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
    * Create a new thread
    */
   createThread: async (systemPrompt?: string) => {
-    console.log('[ThreadStore] Creating new thread')
-
     const threadId = Date.now().toString()
     const newThread: Thread = {
       metadata: {
@@ -187,7 +181,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       localStorage.setItem('currentThread', threadId)
     }
 
-    console.log(`[ThreadStore] Created thread ${threadId}`)
     return threadId
   },
 
@@ -195,8 +188,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
    * Switch to a different thread
    */
   switchThread: async (threadId: string) => {
-    console.log(`[ThreadStore] Switching to thread ${threadId}`)
-
     try {
       // Find thread metadata
       const thread = get().threads.find(t => t.id === threadId)
@@ -234,7 +225,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         localStorage.setItem('currentThread', threadId)
       }
 
-      console.log(`[ThreadStore] Loaded ${threadData.messages.length} messages`)
       return {
         messages: threadData.messages,
         systemPrompt: threadData.systemPrompt
@@ -249,8 +239,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
    * Delete a thread
    */
   deleteThread: async (threadId: string) => {
-    console.log(`[ThreadStore] Deleting thread ${threadId}`)
-
     try {
       // Find thread
       const thread = get().threads.find(t => t.id === threadId)
@@ -273,8 +261,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         threads: state.threads.filter(t => t.id !== threadId),
         currentThreadId: state.currentThreadId === threadId ? null : state.currentThreadId
       }))
-
-      console.log(`[ThreadStore] Deleted thread ${threadId}`)
     } catch (error) {
       console.error(`[ThreadStore] Failed to delete thread ${threadId}:`, error)
     }
@@ -318,8 +304,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       set((state) => ({
         threads: state.threads.map(t => t.id === threadId ? updatedMetadata : t)
       }))
-
-      console.log(`[ThreadStore] Saved ${messages.length} messages to thread ${threadId}`)
     } catch (error) {
       console.error(`[ThreadStore] Failed to save thread ${threadId}:`, error)
     }
@@ -356,8 +340,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       if (newTitle === 'New conversation' || newTitle === thread.title) {
         return // No change
       }
-
-      console.log(`[ThreadStore] Updating thread ${threadId} title to: ${newTitle}`)
 
       // Rename file
       const oldFilename = generateThreadFileName(threadId, thread.title)
@@ -396,8 +378,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
             : t
         )
       }))
-
-      console.log(`[ThreadStore] Thread ${threadId} title updated successfully`)
     } catch (error) {
       console.error(`[ThreadStore] Failed to update thread title ${threadId}:`, error)
     }

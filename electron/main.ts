@@ -557,6 +557,13 @@ ipcMain.handle('app:get-version', () => {
   return app.getVersion();
 });
 
+// Get application root directory
+ipcMain.handle('app:get-root', () => {
+  // In production, app.getAppPath() points to the asar archive or app directory
+  // In development, it points to the project root
+  return app.getAppPath();
+});
+
 // Open external URL (for OAuth flows)
 ipcMain.handle('app:open-external', async (_event, url: string) => {
   try {

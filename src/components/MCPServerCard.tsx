@@ -117,6 +117,11 @@ export function MCPServerCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2 mb-1">
               <span className="font-semibold truncate">{server.name}</span>
+              {server.isBuiltIn && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                  Built-in
+                </span>
+              )}
             </div>
 
             {/* Description */}
@@ -213,10 +218,10 @@ export function MCPServerCard({
               size="icon"
               className="h-7 w-7"
               onClick={() => onDelete(server.id)}
-              title="Delete server"
-              disabled={isActive}
+              title={server.isBuiltIn ? "Built-in servers cannot be deleted" : "Delete server"}
+              disabled={isActive || server.isBuiltIn}
             >
-              <Trash2 className="h-4 w-4 text-muted-foreground" />
+              <Trash2 className={cn("h-4 w-4", server.isBuiltIn ? "text-muted-foreground/30" : "text-muted-foreground")} />
             </Button>
           </div>
         </div>

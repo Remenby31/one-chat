@@ -25,6 +25,36 @@ export function useStreamingChat(
 
   // Fetch tools from all active MCP servers
   useEffect(() => {
+    // Helper to fetch tools with retry (handles race condition during server startup)
+    const fetchToolsWithRetry = async (
+      server: MCPServer,
+      maxRetries = 3,
+      delay = 500
+    ): Promise<{ serverId: string; serverName: string; tools: MCPTool[] }> => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const tools = await mcpManager.getServerTools(server.id)
+          return { serverId: server.id, serverName: server.name, tools }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+
+          // If server not running yet, retry with exponential backoff
+          if (errorMsg.includes('Server not running') && attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, delay * attempt))
+            continue
+          }
+
+          // Log only on final failure or non-retryable errors
+          if (attempt === maxRetries || !errorMsg.includes('Server not running')) {
+            console.warn(`[useStreamingChat] Failed to get tools from ${server.name}: ${errorMsg}`)
+          }
+
+          return { serverId: server.id, serverName: server.name, tools: [] }
+        }
+      }
+
+      return { serverId: server.id, serverName: server.name, tools: [] }
+    }
 
     const activeServers = mcpServers.filter(
       s => s.enabled && s.status === 'RUNNING'
@@ -36,15 +66,7 @@ export function useStreamingChat(
     }
 
     Promise.allSettled(
-      activeServers.map(async (server) => {
-        try {
-          const tools = await mcpManager.getServerTools(server.id)
-          return { serverId: server.id, serverName: server.name, tools }
-        } catch (error) {
-          console.error(`[useStreamingChat] ❌ Failed to get tools from ${server.name}:`, error)
-          return { serverId: server.id, serverName: server.name, tools: [] }
-        }
-      })
+      activeServers.map(server => fetchToolsWithRetry(server))
     ).then(results => {
       const toolsMap: Record<string, MCPTool[]> = {}
       let totalTools = 0
@@ -53,8 +75,6 @@ export function useStreamingChat(
         if (result.status === 'fulfilled') {
           toolsMap[result.value.serverId] = result.value.tools
           totalTools += result.value.tools.length
-        } else {
-          console.error('[useStreamingChat] ❌ Promise rejected for server:', result.reason)
         }
       })
 
@@ -216,6 +236,9 @@ export function useStreamingChat(
           requestBody.tools = openaiTools
         }
 
+        console.log(`[SSE] 🌐 Initiating request to: ${apiKey.baseURL}/chat/completions`)
+        console.log(`[SSE] 📤 Request body: ${JSON.stringify({ model: modelConfig.model, messages: conversationMessages.length + ' messages', stream: true, tools: openaiTools.length > 0 ? openaiTools.length + ' tools' : 'none' })}`)
+
         const requestStartTime = performance.now()
         const response = await fetch(`${apiKey.baseURL}/chat/completions`, {
           method: 'POST',
@@ -226,6 +249,10 @@ export function useStreamingChat(
           body: JSON.stringify(requestBody),
           signal: abortController.signal,
         })
+
+        const responseReceivedTime = performance.now()
+        const connectionTime = responseReceivedTime - requestStartTime
+        console.log(`[SSE] ✅ Response received in ${connectionTime.toFixed(0)}ms (HTTP ${response.status})`)
 
         if (!response.ok) {
           const errorText = await response.text()
@@ -244,34 +271,83 @@ export function useStreamingChat(
         let fullText = ''
         let toolCalls: any[] = []
         let firstTokenTime: number | null = null
+        let chunkCounter = 0
+
+        console.log('[SSE] 🚀 Starting SSE stream processing...')
 
         while (true) {
+          // Measure time waiting for next chunk from network
+          const readStart = performance.now()
           const { done, value } = await reader.read()
-          if (done) break
+          const readEnd = performance.now()
+          const readTime = readEnd - readStart
 
+          if (done) {
+            console.log('[SSE] ✅ Stream complete, reader done')
+            break
+          }
+
+          chunkCounter++
+          const chunkSize = value?.length || 0
+
+          // Log read timing and chunk size
+          if (readTime > 10) {
+            console.warn(`[SSE] ⏱️  Chunk #${chunkCounter}: reader.read() took ${readTime.toFixed(0)}ms (slow!) | Size: ${chunkSize} bytes`)
+          } else {
+            console.log(`[SSE] 📦 Chunk #${chunkCounter}: received in ${readTime.toFixed(0)}ms | Size: ${chunkSize} bytes`)
+          }
+
+          const decodeStart = performance.now()
           const chunkText = decoder.decode(value, { stream: true })
+          const decodeEnd = performance.now()
+
+          console.log(`[SSE] 🔤 Decoded (${(decodeEnd - decodeStart).toFixed(1)}ms): "${chunkText.substring(0, 80).replace(/\n/g, '\\n')}${chunkText.length > 80 ? '...' : ''}"`)
+
           buffer += chunkText
           const lines = buffer.split('\n')
+          const lineCount = lines.length - 1 // -1 because last element is the incomplete line
           buffer = lines.pop() || ''
+
+          console.log(`[SSE] 📋 Split into ${lineCount} complete lines | Buffer remaining: ${buffer.length} chars ${buffer.length > 0 ? `("${buffer.substring(0, 30)}...")` : ''}`)
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim()
-              if (data === '[DONE]') break
+              if (data === '[DONE]') {
+                console.log('[SSE] 🏁 Received [DONE] marker')
+                break
+              }
 
               try {
+                const parseStart = performance.now()
                 const parsed = JSON.parse(data)
                 const delta = parsed.choices?.[0]?.delta
+                const parseEnd = performance.now()
 
                 // Handle text content
                 if (delta?.content) {
                   if (firstTokenTime === null) {
                     firstTokenTime = performance.now()
+                    const ttft = firstTokenTime - requestStartTime
+                    console.log(`[SSE] 🎯 FIRST TOKEN! TTFT: ${ttft.toFixed(0)}ms`)
                   }
 
+                  const contentLength = delta.content.length
+                  console.log(`[SSE] 💬 Delta content (parse: ${(parseEnd - parseStart).toFixed(1)}ms): "${delta.content.substring(0, 50).replace(/\n/g, '\\n')}${delta.content.length > 50 ? '...' : ''}" (${contentLength} chars)`)
+
                   fullText += delta.content
+
+                  const updateStart = performance.now()
                   store.updateLastMessage(fullText)
                   store.setStreamingText(fullText)
+                  const updateEnd = performance.now()
+                  const updateTime = updateEnd - updateStart
+
+                  if (updateTime > 5) {
+                    console.warn(`[SSE] ⚠️  Store update took ${updateTime.toFixed(1)}ms (slow!)`)
+                  } else {
+                    console.log(`[SSE] 💾 Store updated in ${updateTime.toFixed(1)}ms | Total text length: ${fullText.length}`)
+                  }
                 }
 
                 // Handle tool calls
@@ -296,10 +372,24 @@ export function useStreamingChat(
                   }
                 }
               } catch (e) {
-                console.warn('[useStreamingChat] Failed to parse SSE line:', line, e)
+                console.warn('[SSE] ❌ Failed to parse SSE line:', line, e)
               }
             }
           }
+        }
+
+        // Log final statistics
+        const streamEndTime = performance.now()
+        const totalStreamTime = streamEndTime - requestStartTime
+        const ttft = firstTokenTime ? (firstTokenTime - requestStartTime) : null
+        console.log(`[SSE] 📊 Stream Statistics:`)
+        console.log(`  • Total chunks received: ${chunkCounter}`)
+        console.log(`  • Total characters: ${fullText.length}`)
+        console.log(`  • TTFT (Time To First Token): ${ttft ? ttft.toFixed(0) + 'ms' : 'N/A'}`)
+        console.log(`  • Total stream time: ${totalStreamTime.toFixed(0)}ms`)
+        console.log(`  • Average throughput: ${(fullText.length / (totalStreamTime / 1000)).toFixed(0)} chars/sec`)
+        if (buffer.length > 0) {
+          console.warn(`[SSE] ⚠️  Incomplete data remaining in buffer: "${buffer.substring(0, 50)}..."`)
         }
 
         // If no tool calls, we're done
@@ -409,8 +499,12 @@ export function useStreamingChat(
           })
         }
 
-        // Update last message content to empty for next turn
-        store.updateLastMessage('')
+        // Add new assistant message for next turn (so updateLastMessage doesn't overwrite tool messages)
+        store.addMessage({
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+        })
       }
 
       if (turnCount >= MAX_TURNS) {

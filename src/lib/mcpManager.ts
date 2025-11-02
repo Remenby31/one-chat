@@ -101,23 +101,30 @@ export class MCPManager {
       const machine = stateMachineManager.getMachine(server.id, server.status)
       const currentState = machine.getState()
 
-      // Check if stuck in transient state
+      // Reset ALL servers to appropriate state after app restart
+      // Electron processes don't survive restarts, so RUNNING servers need to be reset
+      let shouldRecover = false
+      let recoveryState: MCPServerState = 'IDLE'
+
       if (machine.isTransitioning()) {
-        const stateAge = Date.now() - machine.getMetadata().timestamp
-
-        console.warn(`[MCPManager] Recovering stuck server: ${server.name}, state: ${currentState}, age: ${stateAge}ms`)
-
-        // Determine appropriate recovery state
-        let recoveryState: MCPServerState = 'IDLE'
+        // Stuck in transient state
+        shouldRecover = true
+        console.warn(`[MCPManager] Recovering stuck server: ${server.name}, state: ${currentState}`)
 
         if (currentState === 'AUTHENTICATING' || currentState === 'TOKEN_REFRESHING') {
           recoveryState = 'AUTH_REQUIRED'
         }
+      } else if (currentState === 'RUNNING') {
+        // RUNNING servers must be reset because Electron processes were killed
+        shouldRecover = true
+        recoveryState = 'IDLE'
+      }
 
+      if (shouldRecover) {
         // Force transition to recovery state
         machine.forceSetState(recoveryState, {
           timestamp: Date.now(),
-          userMessage: 'Server was recovered from stuck state after restart'
+          userMessage: 'Server reset after app restart'
         })
 
         // Update server object
@@ -143,6 +150,13 @@ export class MCPManager {
     }
 
     const machine = stateMachineManager.getMachine(server.id, server.status)
+
+    // Skip if already running or starting (handles React StrictMode double-mount in dev)
+    const currentState = machine.getState()
+    if (currentState === 'RUNNING' || currentState === 'STARTING' || currentState === 'VALIDATING') {
+      console.log('[MCPManager] Server already running or starting, skipping start:', server.name, 'state:', currentState)
+      return
+    }
 
     try {
       // Begin start sequence

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+vault/
+.obsidian/
+*.log
+.env
+.DS_Store
+coverage/
+*.tmp
+.vscode/
+.idea/

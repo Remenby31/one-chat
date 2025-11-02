@@ -168,7 +168,11 @@ export const STATE_TRANSITIONS: Record<MCPServerState, Partial<Record<MCPStateEv
 
   // AUTH_FAILED - Authentication failed
   AUTH_FAILED: {
+    AUTHENTICATE: 'AUTHENTICATING',    // Allow re-authentication
     RETRY: 'AUTHENTICATING',
+    AUTH_SUCCESS: 'VALIDATING',        // OAuth succeeded, restart validation
+    START: 'VALIDATING',               // Allow restart attempt
+    TOKEN_EXPIRED: 'TOKEN_REFRESHING', // Allow token refresh if token exists
     STOP: 'IDLE',
     RESET: 'AUTH_REQUIRED'
   },

@@ -51,6 +51,7 @@ export interface MCPServer {
   description?: string;
   icon?: string;
   category?: MCPServerCategory;
+  isBuiltIn?: boolean; // True for built-in servers (cannot be deleted, auto-initialized)
 }
 
 // Tool definition from MCP server

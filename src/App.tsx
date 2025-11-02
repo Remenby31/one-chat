@@ -15,6 +15,7 @@ import { showSuccessToast, showOAuthErrorToast, showGlobalErrorToast } from '@/l
 import { useThreadStore } from '@/lib/threadStore'
 import { useChatStore } from '@/lib/chatStore'
 import { DEFAULT_SYSTEM_PROMPT } from '@/lib/defaultSystemPrompt'
+import { initializeBuiltInServers } from '@/lib/builtInServers'
 
 // ============================================
 // PARAMÈTRES DE LA GRILLE SCINTILLANTE ET UI
@@ -69,18 +70,13 @@ function App() {
 
   // Load saved model and MCP servers on mount
   useEffect(() => {
-    console.log('[App] 🎬 useEffect MOUNTED! Starting config load...')
     const loadConfig = async () => {
-      console.log('[App] 🔄 Loading configuration...')
       if (window.electronAPI) {
         // Use Electron file storage
         const savedModels = await window.electronAPI.readConfig('models.json')
         const savedApiKeys = await window.electronAPI.readConfig('apiKeys.json')
         const selectedModelId = await window.electronAPI.readConfig('selectedModel.json')
         const savedMcpServers = await window.electronAPI.readConfig('mcpServers.json')
-
-        console.log('[App] 📦 Loaded MCP servers from storage:', savedMcpServers)
-        console.log('[App] 📊 MCP servers count:', savedMcpServers?.length || 0)
 
         if (savedApiKeys) {
           setApiKeys(savedApiKeys)
@@ -97,23 +93,27 @@ function App() {
         }
 
         if (savedMcpServers) {
-          console.log('[App] ✅ MCP servers found, recovering stuck servers...')
           // Recover stuck servers first
-          const recoveredServers = await mcpManager.recoverStuckServers(savedMcpServers)
-          console.log('[App] 🔧 Recovered servers:', recoveredServers)
-          console.log('[App] 🔄 Setting MCP servers state with', recoveredServers.length, 'servers')
-          setMcpServers(recoveredServers)
-          console.log('[App] ✅ MCP servers state updated')
+          let recoveredServers = await mcpManager.recoverStuckServers(savedMcpServers)
 
-          // Save recovered state
+          // Initialize built-in servers (adds new built-in servers, updates existing ones)
+          recoveredServers = await initializeBuiltInServers(recoveredServers)
+
+          setMcpServers(recoveredServers)
+
+          // Save recovered and initialized state
           await window.electronAPI.writeConfig('mcpServers.json', recoveredServers)
 
           // Start enabled servers
-          console.log('[App] 🚀 Starting enabled servers...')
           await mcpManager.startEnabledServers(recoveredServers)
-          console.log('[App] ✅ MCP servers initialization complete')
         } else {
-          console.warn('[App] ⚠️ No MCP servers found in storage (savedMcpServers is null/undefined)')
+          // No saved servers - initialize with built-in servers only
+          const builtInServers = await initializeBuiltInServers([])
+          setMcpServers(builtInServers)
+          await window.electronAPI.writeConfig('mcpServers.json', builtInServers)
+
+          // Start enabled built-in servers
+          await mcpManager.startEnabledServers(builtInServers)
         }
       } else {
         // Fallback to localStorage for development
@@ -144,16 +144,13 @@ function App() {
       }
     }
 
-    console.log('[App] 🚀 Calling loadConfig()...')
     loadConfig().catch(error => {
-      console.error('[App] ❌ Error in loadConfig:', error)
+      console.error('[App] Error loading config:', error)
     })
 
     // Register listener for MCP server status changes
     // This keeps React state synchronized with internal state machines
     const unsubscribe = mcpManager.onStatusChange((serverId, status, metadata) => {
-      console.log(`[App] 🔄 MCP server status changed: ${serverId} → ${status}`)
-
       setMcpServers(prevServers => {
         const updatedServers = prevServers.map(server =>
           server.id === serverId
@@ -239,12 +236,6 @@ function App() {
   // Handle OAuth callbacks from custom protocol
   useOAuthCallback(
     async (serverId, oauthConfig) => {
-      console.log('[App] OAuth success for server:', serverId)
-      console.log('[App] Received OAuth config with tokens:', {
-        hasAccessToken: !!oauthConfig.accessToken,
-        hasRefreshToken: !!oauthConfig.refreshToken
-      })
-
       // Reload MCP servers to get updated tokens
       if (window.electronAPI) {
         const updatedServers = await window.electronAPI.readConfig('mcpServers.json')
@@ -256,7 +247,6 @@ function App() {
           if (server?.enabled) {
             try {
               await mcpManager.startServer(server)
-              console.log('[App] Server started successfully after OAuth')
             } catch (error) {
               console.error('[App] Failed to start server after OAuth:', error)
             }
@@ -272,7 +262,6 @@ function App() {
       }
 
       // Show success notification
-      console.log('[App] OAuth flow completed successfully')
       showSuccessToast('OAuth Authentication Successful', 'MCP server authenticated successfully')
     },
     (error) => {
@@ -344,14 +333,11 @@ function App() {
 
   // Thread management handlers
   const handleNewChat = async () => {
-    console.log('[App] Creating new chat')
     await threadStore.createThread(DEFAULT_SYSTEM_PROMPT)
     chatStore.clearMessages()
   }
 
   const handleThreadSelect = async (threadId: string) => {
-    console.log('[App] Switching to thread:', threadId)
-
     // Don't switch if already on this thread
     if (threadId === threadStore.currentThreadId) {
       return

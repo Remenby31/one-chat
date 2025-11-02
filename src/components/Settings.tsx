@@ -462,6 +462,14 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
   }
 
   const handleDeleteMcpServer = (id: string) => {
+    const server = mcpServers.find(s => s.id === id)
+
+    // Prevent deletion of built-in servers
+    if (server?.isBuiltIn) {
+      alert('Built-in servers cannot be deleted. You can disable them instead.')
+      return
+    }
+
     if (confirm('Are you sure you want to delete this MCP server?')) {
       saveMcpServers(mcpServers.filter(server => server.id !== id))
     }

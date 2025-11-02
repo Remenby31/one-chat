@@ -73,7 +73,8 @@
       "Bash(timeout 30 npx tsc:*)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:shiki.style)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []
