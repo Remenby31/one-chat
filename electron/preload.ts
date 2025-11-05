@@ -9,6 +9,14 @@ const electronAPI = {
   writeConfig: (filename: string, data: any) => ipcRenderer.invoke('config:write', filename, data),
   exportConfig: () => ipcRenderer.invoke('config:export'),
   importConfig: () => ipcRenderer.invoke('config:import'),
+  onConfigChanged: (callback: (filename: string, data: any) => void) => {
+    const handler = (_event: any, filename: string, data: any) => callback(filename, data);
+    ipcRenderer.on('config:changed', handler);
+    // Return cleanup function
+    return () => {
+      ipcRenderer.removeListener('config:changed', handler);
+    };
+  },
 
   // Environment variable resolution
   resolveEnvVar: (value: string) => ipcRenderer.invoke('env:resolve', value),
@@ -64,10 +72,5 @@ const electronAPI = {
   // Note: Chat completion streaming is now handled directly via fetch() in frontend
   // No IPC needed thanks to permissive CSP
 };
-
-console.log('[preload.ts] ============================================');
-console.log('[preload.ts] VERSION: 4.0 - TYPESCRIPT MIGRATION');
-console.log('[preload.ts] Exposing electronAPI with methods:', Object.keys(electronAPI));
-console.log('[preload.ts] ============================================');
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

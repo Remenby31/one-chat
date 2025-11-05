@@ -37,7 +37,6 @@ export const MermaidRenderer: FC<MermaidRendererProps> = ({
           result.bindFunctions?.(ref.current)
         }
       } catch (e) {
-        console.warn('Failed to render Mermaid diagram:', e)
         if (ref.current) {
           ref.current.textContent = 'Failed to render diagram'
         }

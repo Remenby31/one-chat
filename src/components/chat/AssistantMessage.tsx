@@ -1,7 +1,7 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 import { CopyIcon, CheckIcon, RefreshCwIcon } from 'lucide-react'
-import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
+import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { ToolCallDisplay } from '@/components/chat/ToolCall'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
 import type { ChatMessage } from '@/lib/chatStore'

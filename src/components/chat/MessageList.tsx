@@ -1,7 +1,7 @@
 import type { FC } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDownIcon } from 'lucide-react'
-import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
+import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import type { ChatMessage } from '@/lib/chatStore'

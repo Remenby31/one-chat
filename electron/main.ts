@@ -1,12 +1,43 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, protocol } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs'; // For file watcher
 import { fileURLToPath } from 'url';
 import { spawn, ChildProcess } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
+
+// File write queue to prevent concurrent writes
+class FileWriteQueue {
+  private queues: Map<string, Promise<any>> = new Map();
+
+  async enqueue<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
+    // Get existing queue for this file, or create a resolved promise
+    const existingQueue = this.queues.get(filePath) || Promise.resolve();
+
+    // Chain the new operation after the existing queue
+    const newQueue = existingQueue
+      .catch(() => {}) // Ignore errors from previous operations
+      .then(() => operation());
+
+    // Store the new queue
+    this.queues.set(filePath, newQueue);
+
+    try {
+      const result = await newQueue;
+      return result;
+    } finally {
+      // Clean up if this was the last operation
+      if (this.queues.get(filePath) === newQueue) {
+        this.queues.delete(filePath);
+      }
+    }
+  }
+}
+
+const fileWriteQueue = new FileWriteQueue();
 
 // MCP Server process management
 interface MCPServerProcess {
@@ -108,7 +139,6 @@ class MCPProcessManager {
             try {
               const fs = require('fs');
               if (npmPath && fs.existsSync(npmPath)) {
-                console.log(`[MCP] Found npx at: ${npmPath}`);
                 // Use cmd.exe to run .cmd files on Windows
                 resolvedCommand = 'cmd.exe';
                 resolvedArgs = ['/c', npmPath, ...args];
@@ -121,14 +151,11 @@ class MCPProcessManager {
           }
 
           if (!foundNpx) {
-            console.log(`[MCP] Warning: Could not find npx.cmd in standard locations, using npx directly`);
             // Fallback: just use 'npx' and hope it's in PATH
             resolvedCommand = 'npx';
             resolvedArgs = args;
           }
-        }
-
-        console.log(`[MCP] Executing: ${resolvedCommand} ${resolvedArgs.join(' ')}`);
+        };
 
         // Spawn the process
         const childProcess = spawn(resolvedCommand, resolvedArgs, {
@@ -314,7 +341,7 @@ class MCPProcessManager {
 
     // Handle notification (no response expected)
     if (message.method) {
-      console.log(`[MCP ${serverId}] Notification:`, message.method, message.params);
+      // Notification received (logged at debug level if needed)
     }
   }
 
@@ -392,10 +419,80 @@ if (!gotTheLock) {
   });
 }
 
+/**
+ * Setup file watcher for mcpServers.json to broadcast changes to all renderers
+ */
+function setupConfigFileWatcher() {
+  const mcpServersPath = path.join(app.getPath('userData'), 'mcpServers.json');
+
+  // Debounce timer to avoid multiple events for single file write
+  let debounceTimer: NodeJS.Timeout | null = null;
+
+  console.log('[FileWatcher] Watching config file:', mcpServersPath);
+
+  const watcher = fsSync.watch(mcpServersPath, (eventType) => {
+    if (eventType === 'change') {
+      console.log('[FileWatcher] Config file changed');
+
+      // Debounce: wait 100ms for file writes to complete
+      if (debounceTimer) clearTimeout(debounceTimer);
+
+      debounceTimer = setTimeout(async () => {
+        try {
+          const content = await fs.readFile(mcpServersPath, 'utf-8');
+          let data;
+
+          try {
+            data = JSON.parse(content);
+          } catch (parseError: any) {
+            console.error('[FileWatcher] JSON parse error:', parseError.message);
+
+            // Try to recover using the same recovery mechanism as config:read
+            try {
+              const extracted = extractValidJSON(content);
+              if (extracted) {
+                console.log('[FileWatcher] Successfully extracted valid JSON, repairing file...');
+                data = extracted;
+
+                // Repair the file
+                const backupPath = `${mcpServersPath}.corrupted.${Date.now()}`;
+                await fs.copyFile(mcpServersPath, backupPath);
+                await fs.writeFile(mcpServersPath, JSON.stringify(data, null, 2), 'utf-8');
+                await fs.writeFile(`${mcpServersPath}.backup`, JSON.stringify(data, null, 2), 'utf-8');
+
+                console.log('[FileWatcher] File repaired successfully');
+              } else {
+                console.error('[FileWatcher] Could not extract valid JSON, skipping broadcast');
+                return;
+              }
+            } catch (recoveryError) {
+              console.error('[FileWatcher] Recovery failed:', recoveryError);
+              return;
+            }
+          }
+
+          console.log('[FileWatcher] Broadcasting config change to all renderers');
+
+          // Broadcast to all renderer processes
+          BrowserWindow.getAllWindows().forEach(win => {
+            win.webContents.send('config:changed', 'mcpServers.json', data);
+          });
+        } catch (error) {
+          console.error('[FileWatcher] Error reading config file:', error);
+        }
+      }, 100);
+    }
+  });
+
+  // Cleanup watcher on app quit
+  app.on('before-quit', () => {
+    console.log('[FileWatcher] Closing file watcher');
+    watcher.close();
+  });
+}
+
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.cjs');
-  console.log('[main.ts] Loading preload from:', preloadPath);
-  console.log('[main.ts] __dirname:', __dirname);
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -524,6 +621,9 @@ app.whenReady().then(() => {
 
   createWindow();
 
+  // Setup file watcher for mcpServers.json to sync config changes
+  setupConfigFileWatcher();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -576,18 +676,141 @@ ipcMain.handle('app:open-external', async (_event, url: string) => {
 
 // Config file operations
 ipcMain.handle('config:read', async (_event, filename: string) => {
-  try {
-    const configDir = await ensureConfigDirectory();
-    const filePath = path.join(configDir, filename);
-    const data = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(data);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return null; // File doesn't exist yet
+  const configDir = await ensureConfigDirectory();
+  const filePath = path.join(configDir, filename);
+  const backupPath = `${filePath}.backup`;
+
+  // Helper function to try parsing JSON with recovery
+  const tryParseJSON = async (path: string, isBackup: boolean = false): Promise<any> => {
+    try {
+      const data = await fs.readFile(path, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist
+      }
+
+      // If JSON parsing failed, this is a corrupted file
+      if (error instanceof SyntaxError && !isBackup) {
+        console.error(`[ConfigRead] Corrupted file detected: ${filename}`);
+        console.error(`[ConfigRead] Error: ${error.message}`);
+
+        // Try to recover from backup
+        try {
+          console.log(`[ConfigRead] Attempting recovery from backup...`);
+          const backupData = await tryParseJSON(backupPath, true);
+
+          if (backupData !== null) {
+            console.log(`[ConfigRead] ✅ Successfully recovered from backup`);
+
+            // Restore the corrupted file with backup data
+            const corruptedBackupPath = `${path}.corrupted.${Date.now()}`;
+            await fs.copyFile(path, corruptedBackupPath);
+            console.log(`[ConfigRead] Corrupted file saved to: ${corruptedBackupPath}`);
+
+            await fs.writeFile(path, JSON.stringify(backupData, null, 2), 'utf-8');
+            console.log(`[ConfigRead] Main file restored from backup`);
+
+            return backupData;
+          }
+        } catch (backupError) {
+          console.error(`[ConfigRead] Backup recovery failed:`, backupError);
+        }
+
+        // If backup recovery failed, try to extract valid JSON
+        console.log(`[ConfigRead] Attempting to extract valid JSON from corrupted file...`);
+        try {
+          const corruptedData = await fs.readFile(path, 'utf-8');
+          const extracted = extractValidJSON(corruptedData);
+
+          if (extracted) {
+            console.log(`[ConfigRead] ✅ Successfully extracted valid JSON`);
+
+            // Save corrupted file for debugging
+            const corruptedBackupPath = `${path}.corrupted.${Date.now()}`;
+            await fs.copyFile(path, corruptedBackupPath);
+
+            // Write the extracted valid JSON
+            await fs.writeFile(path, JSON.stringify(extracted, null, 2), 'utf-8');
+            await fs.writeFile(backupPath, JSON.stringify(extracted, null, 2), 'utf-8');
+
+            return extracted;
+          }
+        } catch (extractError) {
+          console.error(`[ConfigRead] JSON extraction failed:`, extractError);
+        }
+
+        // If all recovery attempts failed, return default empty data
+        console.error(`[ConfigRead] ❌ All recovery attempts failed, returning empty data`);
+        const defaultData = filename.includes('.json') ? [] : null;
+
+        // Save corrupted file and create new one
+        const corruptedBackupPath = `${path}.corrupted.${Date.now()}`;
+        await fs.copyFile(path, corruptedBackupPath);
+        await fs.writeFile(path, JSON.stringify(defaultData, null, 2), 'utf-8');
+
+        return defaultData;
+      }
+
+      throw error;
     }
-    throw error;
-  }
+  };
+
+  return tryParseJSON(filePath);
 });
+
+// Helper function to extract valid JSON from corrupted data
+function extractValidJSON(corruptedData: string): any | null {
+  try {
+    // Try to find the first complete JSON structure
+    let validContent = '';
+    let bracketCount = 0;
+    let braceCount = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < corruptedData.length; i++) {
+      const char = corruptedData[i];
+      validContent += char;
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) continue;
+
+      if (char === '[') bracketCount++;
+      if (char === ']') bracketCount--;
+      if (char === '{') braceCount++;
+      if (char === '}') braceCount--;
+
+      // When all brackets and braces are balanced, we might have valid JSON
+      if (bracketCount === 0 && braceCount === 0 && (char === ']' || char === '}')) {
+        try {
+          const parsed = JSON.parse(validContent);
+          return parsed;
+        } catch {
+          // Continue searching
+        }
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 ipcMain.handle('config:write', async (_event, filename: string, data: any) => {
   const configDir = await ensureConfigDirectory();
@@ -596,15 +819,32 @@ ipcMain.handle('config:write', async (_event, filename: string, data: any) => {
   const filePath = path.join(configDir, filename);
   const fileDir = path.dirname(filePath);
 
-  // Ensure directory exists
-  try {
-    await fs.access(fileDir);
-  } catch {
-    await fs.mkdir(fileDir, { recursive: true });
-  }
+  // Use file write queue to prevent concurrent writes to the same file
+  return fileWriteQueue.enqueue(filePath, async () => {
+    // Ensure directory exists
+    try {
+      await fs.access(fileDir);
+    } catch {
+      await fs.mkdir(fileDir, { recursive: true });
+    }
 
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-  return true;
+    // Write file with proper error handling
+    try {
+      const jsonContent = JSON.stringify(data, null, 2);
+      await fs.writeFile(filePath, jsonContent, 'utf-8');
+
+      // Create backup of important config files
+      if (['mcpServers.json', 'models.json', 'apiKeys.json'].includes(filename)) {
+        const backupPath = `${filePath}.backup`;
+        await fs.writeFile(backupPath, jsonContent, 'utf-8');
+      }
+
+      return true;
+    } catch (error: any) {
+      console.error(`[ConfigWrite] Error writing ${filename}:`, error);
+      throw error;
+    }
+  });
 });
 
 // Export configuration
@@ -715,17 +955,12 @@ ipcMain.handle('env:list', async () => {
   const relevantPrefixes = ['OPENAI', 'ANTHROPIC', 'API', 'KEY', 'TOKEN', 'GOOGLE', 'AZURE', 'AWS', 'GROQ', 'COHERE', 'MISTRAL', 'HUGGINGFACE', 'HF', 'GEMINI'];
   const envVars: Record<string, string> = {};
 
-  console.log('DEBUG: All process.env keys:', Object.keys(process.env));
-  console.log('DEBUG: Looking for keys matching:', relevantPrefixes);
-
   for (const [key, value] of Object.entries(process.env)) {
     if (value && relevantPrefixes.some(prefix => key.toUpperCase().includes(prefix))) {
-      console.log('DEBUG: Found matching env var:', key);
       envVars[key] = value;
     }
   }
 
-  console.log('DEBUG: Returning env vars:', Object.keys(envVars));
   return envVars;
 });
 

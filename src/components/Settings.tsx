@@ -25,6 +25,7 @@ import { MCPServerDetailsDialog } from "@/components/mcp-details/MCPServerDetail
 import type { MCPServer } from "@/types/mcp"
 import { mcpManager } from "@/lib/mcpManager"
 import { startOAuthFlow } from "@/lib/mcpAuth"
+import { initializeBuiltInServers } from "@/lib/builtInServers"
 import {
   Command,
   CommandInput,
@@ -109,14 +110,21 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
         }
 
         if (savedMcpServers) {
-          // Initialize server statuses based on authentication state
-          const serversWithStatus = savedMcpServers.map((server: MCPServer) => ({
+          // Initialize built-in servers first (ensures they exist)
+          let servers = await initializeBuiltInServers(savedMcpServers)
+
+          // Then initialize server statuses based on authentication state
+          const serversWithStatus = servers.map((server: MCPServer) => ({
             ...server,
             status: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
               ? 'AUTH_REQUIRED' as const
               : (server.status || 'IDLE' as const)
           }))
           setMcpServers(serversWithStatus)
+        } else {
+          // No saved servers - initialize with built-in servers only
+          const builtInServers = await initializeBuiltInServers([])
+          setMcpServers(builtInServers)
         }
       } else {
         // Fallback to localStorage for development
@@ -139,19 +147,43 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
 
         if (savedMcpServers) {
           const parsed = JSON.parse(savedMcpServers)
-          // Initialize server statuses based on authentication state
-          const serversWithStatus = parsed.map((server: MCPServer) => ({
+
+          // Initialize built-in servers first (ensures they exist)
+          let servers = await initializeBuiltInServers(parsed)
+
+          // Then initialize server statuses based on authentication state
+          const serversWithStatus = servers.map((server: MCPServer) => ({
             ...server,
             status: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
               ? 'AUTH_REQUIRED' as const
               : (server.status || 'IDLE' as const)
           }))
           setMcpServers(serversWithStatus)
+        } else {
+          // No saved servers - initialize with built-in servers only
+          const builtInServers = await initializeBuiltInServers([])
+          setMcpServers(builtInServers)
         }
       }
     }
 
     loadConfig()
+  }, [])
+
+  // Sync MCP servers state with config file via file watcher
+  useEffect(() => {
+    if (!window.electronAPI?.onConfigChanged) return
+
+    const handleConfigChanged = (filename: string, data: MCPServer[]) => {
+      if (filename === 'mcpServers.json') {
+        console.log('[Settings] Config file changed, syncing state from file watcher')
+        setMcpServers(data)
+      }
+    }
+
+    window.electronAPI.onConfigChanged(handleConfigChanged)
+
+    // Listener stays active for the lifetime of the component
   }, [])
 
   // Subscribe to MCP server status changes
@@ -162,7 +194,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
           server.id === serverId ? { ...server, status, stateMetadata: metadata } : server
         )
 
-        // Persist status changes to file
+        // Persist status changes to file (file watcher will sync oauthConfig back)
         if (window.electronAPI) {
           window.electronAPI.writeConfig('mcpServers.json', updatedServers)
         } else {

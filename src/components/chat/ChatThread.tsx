@@ -95,7 +95,6 @@ export const ChatThread: FC<ChatThreadProps> = ({
                 messages={messages}
                 onRegenerate={() => {
                   // TODO: Implement regenerate
-                  console.log('Regenerate last message')
                 }}
               />
             )}

@@ -31,7 +31,36 @@ export class MemoryManager {
 
   async initialize(): Promise<void> {
     await ensureDirectory(this.config.vaultPath);
+    await this.ensureRootNote();
     await this.rebuildIndex();
+  }
+
+  /**
+   * Ensure root index note exists
+   * This is the only note that can exist without links
+   */
+  private async ensureRootNote(): Promise<void> {
+    const rootPath = path.join(this.config.vaultPath, this.config.rootNoteName);
+
+    try {
+      await fs.access(rootPath);
+    } catch {
+      // Root note doesn't exist, create it
+      const rootContent = `# Index Principal
+
+Point d'entrée de la base de connaissances.
+
+Toutes les notes doivent être accessibles depuis cette note racine.`;
+
+      const rootFrontmatter = {
+        id: 'root-index',
+        created: formatDate(new Date()),
+        modified: formatDate(new Date()),
+        tags: ['index', 'root']
+      };
+
+      await writeMarkdownFile(rootPath, rootContent, rootFrontmatter);
+    }
   }
 
   async rebuildIndex(): Promise<void> {
@@ -60,7 +89,7 @@ export class MemoryManager {
   private async loadNoteFromFile(filePath: string): Promise<MemoryNote> {
     const { frontmatter, body } = await parseMarkdownFile(filePath);
     const stats = await fs.stat(filePath);
-    
+
     const relativePath = path.relative(this.config.vaultPath, filePath);
     const title = path.basename(filePath, '.md');
     const links = extractWikiLinks(body);
@@ -78,7 +107,8 @@ export class MemoryManager {
       links: links.map(l => normalizeNotePath(l.target)),
       backlinks: [],
       created: frontmatter.created ? new Date(frontmatter.created) : stats.birthtime,
-      modified: frontmatter.modified ? new Date(frontmatter.modified) : stats.mtime
+      modified: frontmatter.modified ? new Date(frontmatter.modified) : stats.mtime,
+      isRoot: frontmatter.id === 'root-index'
     };
 
     return note;
@@ -149,15 +179,60 @@ export class MemoryManager {
     title: string,
     content: string,
     folder?: string,
-    frontmatter?: Partial<NoteFrontmatter>
+    frontmatter?: Partial<NoteFrontmatter>,
+    linkedFrom?: string | string[]
   ): Promise<MemoryNote> {
+    // STRICT VALIDATION: Enforce graph connectivity
+    if (this.config.enforceStrictGraph) {
+      // Extract links from content
+      const linksInContent = extractWikiLinks(content);
+      const hasLinksInContent = linksInContent.length > 0;
+      const hasLinkedFrom = linkedFrom && (Array.isArray(linkedFrom) ? linkedFrom.length > 0 : true);
+
+      // Validate that note will be connected
+      if (!hasLinksInContent && !hasLinkedFrom) {
+        throw new Error(
+          'ORPHAN_NOTE_REJECTED: Cannot create orphaned note. ' +
+          'Must specify linkedFrom parameter OR include [[wiki-links]] in content.'
+        );
+      }
+
+      // Validate linkedFrom notes exist
+      if (hasLinkedFrom) {
+        const linkedFromArray = Array.isArray(linkedFrom) ? linkedFrom : [linkedFrom];
+        for (const sourceId of linkedFromArray) {
+          const sourceNote = await this.readNote(sourceId);
+          if (!sourceNote) {
+            throw new Error(
+              `INVALID_LINK_TARGET: Source note "${sourceId}" does not exist. ` +
+              `Cannot link from non-existent note.`
+            );
+          }
+        }
+      }
+
+      // Validate links in content point to existing notes
+      if (hasLinksInContent) {
+        for (const link of linksInContent) {
+          const targetNote = this.findNoteByPath(link.target);
+          if (!targetNote) {
+            throw new Error(
+              `INVALID_LINK_TARGET: Target note "${link.target}" does not exist. ` +
+              `All links must point to existing notes.`
+            );
+          }
+        }
+      }
+    }
+
+    // Validation passed, create the note
     const noteId = generateNoteId();
     const now = new Date();
-    
-    const notePath = folder 
+
+    const notePath = folder
       ? path.join(folder, `${title}.md`)
       : `${title}.md`;
-    
+
     const fullPath = path.join(this.config.vaultPath, notePath);
     const dir = path.dirname(fullPath);
     await ensureDirectory(dir);
@@ -170,13 +245,28 @@ export class MemoryManager {
     };
 
     await writeMarkdownFile(fullPath, content, fullFrontmatter);
-    
+
     const note = await this.loadNoteFromFile(fullPath);
     this.notesIndex.set(note.id, note);
-    
+
+    // Add links from source notes if linkedFrom specified
+    if (linkedFrom) {
+      const linkedFromArray = Array.isArray(linkedFrom) ? linkedFrom : [linkedFrom];
+      for (const sourceId of linkedFromArray) {
+        const sourceNote = await this.readNote(sourceId);
+        if (sourceNote) {
+          const linkText = `[[${note.title}]]`;
+          if (!sourceNote.content.includes(linkText)) {
+            const newContent = sourceNote.content + `\n${linkText}`;
+            await this.updateNote(sourceId, { content: newContent });
+          }
+        }
+      }
+    }
+
     await this.updateBacklinks();
     this.buildSearchIndex();
-    
+
     return note;
   }
 
@@ -225,13 +315,21 @@ export class MemoryManager {
     const note = await this.readNote(identifier);
     if (!note) return false;
 
+    // Protect root note from deletion
+    if (note.isRoot) {
+      throw new Error(
+        'CANNOT_DELETE_ROOT: Cannot delete the root index note. ' +
+        'The root note is required to maintain graph connectivity.'
+      );
+    }
+
     const fullPath = path.join(this.config.vaultPath, note.path);
     await fs.unlink(fullPath);
-    
+
     this.notesIndex.delete(note.id);
     await this.updateBacklinks();
     this.buildSearchIndex();
-    
+
     return true;
   }
 
@@ -304,7 +402,7 @@ export class MemoryManager {
     }));
 
     const links: Array<{ source: string; target: string }> = [];
-    
+
     for (const note of this.notesIndex.values()) {
       for (const link of note.links) {
         const targetNote = this.findNoteByPath(link);
@@ -318,5 +416,80 @@ export class MemoryManager {
     }
 
     return { nodes, links };
+  }
+
+  /**
+   * Validate that the entire graph is connected
+   * Uses BFS to find all reachable notes from root
+   */
+  async validateGraphConnectivity(): Promise<import('./types.js').GraphValidation> {
+    // Find root note
+    const rootNote = Array.from(this.notesIndex.values()).find(n => n.isRoot);
+
+    if (!rootNote) {
+      return {
+        isFullyConnected: false,
+        totalNotes: this.notesIndex.size,
+        reachableFromRoot: 0,
+        orphanedNotes: Array.from(this.notesIndex.keys())
+      };
+    }
+
+    // BFS from root
+    const reachable = new Set<string>();
+    const queue: string[] = [rootNote.id];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+
+      if (reachable.has(currentId)) continue;
+      reachable.add(currentId);
+
+      const currentNote = this.notesIndex.get(currentId);
+      if (!currentNote) continue;
+
+      // Add linked notes (outgoing links)
+      for (const link of currentNote.links) {
+        const linkedNote = this.findNoteByPath(link);
+        if (linkedNote && !reachable.has(linkedNote.id)) {
+          queue.push(linkedNote.id);
+        }
+      }
+
+      // Add notes that link to this one (incoming links / backlinks)
+      for (const backlink of currentNote.backlinks) {
+        const backlinkNote = this.findNoteByPath(backlink);
+        if (backlinkNote && !reachable.has(backlinkNote.id)) {
+          queue.push(backlinkNote.id);
+        }
+      }
+    }
+
+    const allNoteIds = Array.from(this.notesIndex.keys());
+    const orphanedIds = allNoteIds.filter(id => !reachable.has(id));
+
+    return {
+      isFullyConnected: orphanedIds.length === 0,
+      totalNotes: this.notesIndex.size,
+      reachableFromRoot: reachable.size,
+      orphanedNotes: orphanedIds,
+      unreachableNotes: orphanedIds.map(id => this.notesIndex.get(id)!).filter(Boolean)
+    };
+  }
+
+  /**
+   * Find orphaned notes (not reachable from root)
+   */
+  async findOrphanNotes(): Promise<import('./types.js').MemoryNote[]> {
+    const validation = await this.validateGraphConnectivity();
+    return validation.unreachableNotes || [];
+  }
+
+  /**
+   * Get the root note
+   */
+  async getRootNote(): Promise<import('./types.js').MemoryNote | null> {
+    const rootNote = Array.from(this.notesIndex.values()).find(n => n.isRoot);
+    return rootNote || null;
   }
 }

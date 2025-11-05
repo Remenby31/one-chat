@@ -19,7 +19,8 @@ export interface MCPOAuthConfig {
   // OAuth tokens
   accessToken?: string;
   refreshToken?: string;
-  tokenExpiresAt?: number;
+  tokenExpiresAt?: number; // When the access token expires (typically 1 hour)
+  tokenIssuedAt?: number; // When tokens were issued (for tracking refresh token age)
   // Dynamic Client Registration
   registrationAccessToken?: string; // Token for managing the dynamically registered client
 }

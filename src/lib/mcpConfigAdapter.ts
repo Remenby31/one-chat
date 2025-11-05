@@ -391,16 +391,11 @@ export async function importSingleServerAsync(jsonStr: string): Promise<MCPServe
       return server
     }
 
-    console.log('[importSingleServerAsync] Attempting OAuth discovery for HTTP server:', mcpUrl)
-
     // Attempt OAuth discovery
     try {
       const discoveryResult = await discoverOAuthConfig(mcpUrl)
 
       if (discoveryResult.success && discoveryResult.config) {
-        console.log('[importSingleServerAsync] OAuth discovery successful, auto-filling config')
-        console.log('[importSingleServerAsync] Discovered clientId:', discoveryResult.config.clientId)
-
         // Merge discovered config with existing config
         server.requiresAuth = true
         server.authType = 'oauth'
@@ -413,8 +408,6 @@ export async function importSingleServerAsync(jsonStr: string): Promise<MCPServe
           scopes: discoveryResult.config.scopes || server.oauthConfig?.scopes || [],
           registrationAccessToken: discoveryResult.config.registrationAccessToken, // Store registration token
         }
-
-        console.log('[importSingleServerAsync] Server configured with discovered OAuth:', server.oauthConfig)
       } else {
         console.warn('[importSingleServerAsync] OAuth discovery failed:', discoveryResult.error)
         // Continue with the original server config (may have hardcoded OAuth config)

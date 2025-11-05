@@ -17,7 +17,9 @@ const DEFAULT_CONFIG: MemoryConfig = {
   obsidianCompatible: true,
   ignorePatterns: ['.obsidian', '.trash', '.git'],
   wikilinks: true,
-  tagsFormat: 'both'
+  tagsFormat: 'both',
+  enforceStrictGraph: true,
+  rootNoteName: '_index.md'
 };
 
 class ObsidianMemoryServer {
@@ -46,15 +48,20 @@ class ObsidianMemoryServer {
       tools: [
         {
           name: 'memory_create',
-          description: 'Create a new note in the memory vault. IMPORTANT: Always use wikilink references [[Note Title]] when referencing other notes to maintain knowledge graph connections.',
+          description: 'Create a new note in the memory vault. IMPORTANT: Must specify linkedFrom OR include [[wiki-links]] in content to maintain graph connectivity. Notes without connections will be rejected.',
           inputSchema: {
             type: 'object',
             properties: {
               title: { type: 'string', description: 'Note title' },
               content: { type: 'string', description: 'Note content in markdown. Use [[Note Title]] syntax to reference other notes and create automatic bidirectional links.' },
               folder: { type: 'string', description: 'Optional folder path' },
-              tags: { 
-                type: 'array', 
+              linkedFrom: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional: IDs or titles of existing notes that should link to this new note. If not specified, content must contain [[wiki-links]].'
+              },
+              tags: {
+                type: 'array',
                 items: { type: 'string' },
                 description: 'Optional tags'
               },
@@ -160,6 +167,22 @@ class ObsidianMemoryServer {
             type: 'object',
             properties: {}
           }
+        },
+        {
+          name: 'memory_get_root',
+          description: 'Get the root index note (entry point of the knowledge graph)',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'memory_validate_graph',
+          description: 'Validate that all notes are connected to the root (no orphaned notes)',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
         }
       ]
     }));
@@ -184,7 +207,8 @@ class ObsidianMemoryServer {
               {
                 tags: args.tags as string[] | undefined,
                 aliases: args.aliases as string[] | undefined
-              }
+              },
+              args.linkedFrom as string[] | string | undefined
             );
             return {
               content: [
@@ -375,6 +399,52 @@ class ObsidianMemoryServer {
             };
           }
 
+          case 'memory_get_root': {
+            const rootNote = await this.memoryManager.getRootNote();
+            if (!rootNote) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                'Root note not found. This should not happen.'
+              );
+            }
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    id: rootNote.id,
+                    title: rootNote.title,
+                    path: rootNote.path,
+                    content: rootNote.content,
+                    links: rootNote.links,
+                    backlinks: rootNote.backlinks
+                  }, null, 2)
+                }
+              ]
+            };
+          }
+
+          case 'memory_validate_graph': {
+            const validation = await this.memoryManager.validateGraphConnectivity();
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    isFullyConnected: validation.isFullyConnected,
+                    totalNotes: validation.totalNotes,
+                    reachableFromRoot: validation.reachableFromRoot,
+                    orphanedCount: validation.orphanedNotes.length,
+                    orphanedNotes: validation.orphanedNotes,
+                    message: validation.isFullyConnected
+                      ? 'All notes are connected to the root. Graph is healthy.'
+                      : `Warning: ${validation.orphanedNotes.length} orphaned note(s) detected.`
+                  }, null, 2)
+                }
+              ]
+            };
+          }
+
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -399,7 +469,7 @@ class ObsidianMemoryServer {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     
-    console.error('Obsidian Memory MCP Server started');
+    console.log('Obsidian Memory MCP Server started');
   }
 }
 

@@ -109,6 +109,7 @@ function App() {
         } else {
           // No saved servers - initialize with built-in servers only
           const builtInServers = await initializeBuiltInServers([])
+
           setMcpServers(builtInServers)
           await window.electronAPI.writeConfig('mcpServers.json', builtInServers)
 
@@ -145,8 +146,22 @@ function App() {
     }
 
     loadConfig().catch(error => {
-      console.error('[App] Error loading config:', error)
+      console.error('[App] ❌ FATAL ERROR loading config:', error)
+      console.error('[App] Stack trace:', error?.stack)
+      showGlobalErrorToast(error)
     })
+
+    // Sync MCP servers state with config file via file watcher
+    if (window.electronAPI?.onConfigChanged) {
+      const handleConfigChanged = (filename: string, data: any) => {
+        if (filename === 'mcpServers.json') {
+          console.log('[App] Config file changed, syncing state from file watcher')
+          setMcpServers(data)
+        }
+      }
+
+      window.electronAPI.onConfigChanged(handleConfigChanged)
+    }
 
     // Register listener for MCP server status changes
     // This keeps React state synchronized with internal state machines
@@ -158,7 +173,7 @@ function App() {
             : server
         )
 
-        // Persist updated state to storage
+        // Persist updated state to storage (file watcher will sync back)
         if (window.electronAPI) {
           window.electronAPI.writeConfig('mcpServers.json', updatedServers)
             .catch(error => console.error('[App] Failed to persist MCP server state:', error))

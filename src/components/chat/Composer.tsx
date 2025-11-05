@@ -1,7 +1,7 @@
 import type { FC, FormEvent, KeyboardEvent } from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { ArrowUpIcon, Square, PlusIcon } from 'lucide-react'
-import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
+import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { Button } from '@/components/ui/button'
 import { MCPButton } from '@/components/MCPButton'
 import type { MCPServer } from '@/types/mcp'
@@ -91,7 +91,6 @@ export const Composer: FC<ComposerProps> = ({
             aria-label="Add Attachment"
             onClick={() => {
               // TODO: Implement attachment
-              console.log('Add attachment')
             }}
           >
             <PlusIcon className="size-5 stroke-[1.5px]" />

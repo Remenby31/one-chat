@@ -3,7 +3,10 @@
  * Language-agnostic algorithm for extracting meaningful keywords and generating titles
  */
 
-import type { ThreadMessage } from "@assistant-ui/react"
+import type { ChatMessage } from "./chatStore"
+
+// Type alias for compatibility
+type ThreadMessage = ChatMessage
 
 interface ExtractedEntities {
   properNouns: string[]
@@ -13,14 +16,11 @@ interface ExtractedEntities {
 }
 
 /**
- * Extract text content from message parts
+ * Extract text content from message
  */
 function extractTextFromMessage(message: ThreadMessage): string {
-  return message.content
-    .filter((part) => part.type === "text")
-    .map((part) => (part.type === "text" ? part.text : ""))
-    .join(" ")
-    .trim()
+  // ChatMessage.content is already a string
+  return message.content.trim()
 }
 
 /**

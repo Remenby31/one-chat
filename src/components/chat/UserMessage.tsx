@@ -1,6 +1,6 @@
 import type { FC } from 'react'
 import { PencilIcon } from 'lucide-react'
-import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
+import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import type { ChatMessage } from '@/lib/chatStore'
 
 interface UserMessageProps {
@@ -33,7 +33,6 @@ export const UserMessage: FC<UserMessageProps> = ({ message }) => {
             className="h-7 w-7 bg-transparent hover:bg-transparent opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => {
               // TODO: Implement edit functionality
-              console.log('Edit message:', message.id)
             }}
           >
             <PencilIcon className="size-3.5" />

@@ -3,9 +3,11 @@
  * Manages multiple conversation threads with persistence
  */
 
-import { createAssistantStream } from "assistant-stream"
-import type { ThreadMessage } from "@assistant-ui/react"
+import type { ChatMessage } from "./chatStore"
 import { generateConversationTitle } from "./titleGenerator"
+
+// Type alias for compatibility
+type ThreadMessage = ChatMessage
 
 interface ThreadMetadata {
   id: string
@@ -223,10 +225,13 @@ export function createThreadListAdapter() {
         await saveThreads(threads)
       }
 
-      // Return an AssistantStream with the title
-      return createAssistantStream((controller) => {
-        controller.appendText(generatedTitle)
-        controller.close()
+      // Return a ReadableStream with the title
+      return new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder()
+          controller.enqueue(encoder.encode(generatedTitle))
+          controller.close()
+        }
       })
     }
   }

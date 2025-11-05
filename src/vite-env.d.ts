@@ -7,6 +7,7 @@ interface ElectronAPI {
   writeConfig: (filename: string, data: any) => Promise<boolean>
   exportConfig: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
   importConfig: () => Promise<{ success: boolean; config?: any; canceled?: boolean; error?: string }>
+  onConfigChanged: (callback: (filename: string, data: any) => void) => () => void
   resolveEnvVar: (value: string) => Promise<string>
   getEnvVars: () => Promise<Record<string, string>>
   fetchModels: (baseURL: string, apiKey: string) => Promise<{ success: boolean; models?: string[]; error?: string }>

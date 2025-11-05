@@ -123,8 +123,7 @@ export class MCPManager {
       if (shouldRecover) {
         // Force transition to recovery state
         machine.forceSetState(recoveryState, {
-          timestamp: Date.now(),
-          userMessage: 'Server reset after app restart'
+          timestamp: Date.now()
         })
 
         // Update server object

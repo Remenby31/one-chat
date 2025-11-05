@@ -70,8 +70,6 @@ export function parseWWWAuthenticate(header: string): string | null {
  * Fetch resource metadata from the well-known URL
  */
 async function fetchResourceMetadata(url: string): Promise<ResourceMetadata> {
-  console.log('[OAuth Discovery] Fetching resource metadata from:', url)
-
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -84,8 +82,6 @@ async function fetchResourceMetadata(url: string): Promise<ResourceMetadata> {
   }
 
   const metadata = await response.json() as ResourceMetadata
-  console.log('[OAuth Discovery] Resource metadata:', metadata)
-
   return metadata
 }
 
@@ -101,8 +97,6 @@ async function registerDynamicClient(
   client_secret?: string
   registration_access_token?: string
 }> {
-  console.log('[OAuth Discovery] Registering dynamic client at:', registrationEndpoint)
-
   try {
     const response = await fetch(registrationEndpoint, {
       method: 'POST',
@@ -127,12 +121,6 @@ async function registerDynamicClient(
     }
 
     const registration = await response.json()
-    console.log('[OAuth Discovery] Dynamic client registered:', {
-      client_id: registration.client_id,
-      hasSecret: !!registration.client_secret,
-      hasRegistrationToken: !!registration.registration_access_token
-    })
-
     return registration
   } catch (error) {
     console.error('[OAuth Discovery] DCR error:', error)
@@ -150,7 +138,6 @@ async function fetchAuthServerMetadata(serverUrl: string): Promise<AuthServerMet
     `${serverUrl}/.well-known/openid-configuration`
   ]
 
-  console.log('[OAuth Discovery] Fetching auth server metadata from:', serverUrl)
 
   for (const wellKnownUrl of wellKnownUrls) {
     try {
@@ -163,7 +150,6 @@ async function fetchAuthServerMetadata(serverUrl: string): Promise<AuthServerMet
 
       if (response.ok) {
         const metadata = await response.json() as AuthServerMetadata
-        console.log('[OAuth Discovery] Auth server metadata:', metadata)
         return metadata
       }
     } catch (error) {
@@ -180,7 +166,6 @@ async function fetchAuthServerMetadata(serverUrl: string): Promise<AuthServerMet
  * Returns the resource_metadata URL if OAuth is required
  */
 async function probeForOAuth(url: string): Promise<string | null> {
-  console.log('[OAuth Discovery] Probing URL:', url)
 
   try {
     // Try HEAD first (faster), then GET if HEAD fails
@@ -197,7 +182,6 @@ async function probeForOAuth(url: string): Promise<string | null> {
         if (response.status === 401) {
           const wwwAuth = response.headers.get('www-authenticate')
           if (wwwAuth) {
-            console.log('[OAuth Discovery] Found www-authenticate header:', wwwAuth)
             const resourceMetadataUrl = parseWWWAuthenticate(wwwAuth)
             if (resourceMetadataUrl) {
               return resourceMetadataUrl
@@ -207,7 +191,6 @@ async function probeForOAuth(url: string): Promise<string | null> {
 
         // If we get here and response is OK, server doesn't require OAuth
         if (response.ok) {
-          console.log('[OAuth Discovery] Server does not require OAuth (200 OK)')
           return null
         }
 
@@ -240,13 +223,11 @@ async function probeForOAuth(url: string): Promise<string | null> {
  */
 export async function discoverOAuthConfig(url: string): Promise<OAuthDiscoveryResult> {
   try {
-    console.log('[OAuth Discovery] Starting discovery for:', url)
 
     // Step 1: Probe for OAuth requirement
     const resourceMetadataUrl = await probeForOAuth(url)
 
     if (!resourceMetadataUrl) {
-      console.log('[OAuth Discovery] No OAuth required for this URL')
       return {
         success: false,
         error: 'Server does not advertise OAuth requirement via www-authenticate header'
@@ -278,7 +259,15 @@ export async function discoverOAuthConfig(url: string): Promise<OAuthDiscoveryRe
 
     // Step 5: Dynamic Client Registration (DCR) if supported
     if (authServerMetadata.registration_endpoint) {
-      console.log('[OAuth Discovery] Registration endpoint found, attempting DCR...')
+
+      // ⚠️ Known Issue: Supabase advertises a registration_endpoint but DCR may not work properly
+      // Supabase requires manual OAuth app creation via dashboard: Dashboard → Org Settings → OAuth Apps
+      if (authServerUrl.includes('api.supabase.com')) {
+        console.warn('[OAuth Discovery] ⚠️ Supabase detected: DCR may not work correctly')
+        console.warn('[OAuth Discovery] If you experience issues, create an OAuth app manually at:')
+        console.warn('[OAuth Discovery] https://supabase.com/dashboard/org/_/apps')
+        console.warn('[OAuth Discovery] Redirect URI: jarvis://oauth/callback')
+      }
 
       try {
         const registration = await registerDynamicClient(
@@ -299,16 +288,13 @@ export async function discoverOAuthConfig(url: string): Promise<OAuthDiscoveryRe
           config.registrationAccessToken = registration.registration_access_token
         }
 
-        console.log('[OAuth Discovery] DCR successful, client_id obtained:', registration.client_id, ', has secret:', !!registration.client_secret)
       } catch (error) {
         console.warn('[OAuth Discovery] DCR failed, will use default client_id:', error)
         // Continue without client_id - will use default 'jarvis-mcp-client' in startOAuthFlow
       }
     } else {
-      console.log('[OAuth Discovery] No registration endpoint, will use default client_id')
     }
 
-    console.log('[OAuth Discovery] Successfully discovered OAuth config:', config)
 
     return {
       success: true,

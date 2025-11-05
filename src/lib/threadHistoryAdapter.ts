@@ -3,7 +3,10 @@
  * Handles persistence of messages for individual threads
  */
 
-import type { ThreadMessage } from "@assistant-ui/react"
+import type { ChatMessage } from "./chatStore"
+
+// Type alias for compatibility
+type ThreadMessage = ChatMessage
 
 export interface ThreadHistoryAdapter {
   load(): Promise<{ messages: ThreadMessage[] }>

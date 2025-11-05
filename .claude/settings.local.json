@@ -74,7 +74,14 @@
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:shiki.style)",
       "Bash(dir:*)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(ls:*)",
+      "Bash(echo $env:APPDATA)",
+      "Bash(powershell -Command \"echo $env:APPDATA\")",
+      "Bash(del \"C:\\Users\\cruve\\OneDrive\\Projets\\one-chat\\fix-config.cjs\")",
+      "Bash(del:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

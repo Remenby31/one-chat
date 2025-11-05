@@ -129,12 +129,7 @@ export function MCPServerCard({
               <p className="text-sm text-muted-foreground mb-2">{server.description}</p>
             )}
 
-            {/* State message or error */}
-            {server.stateMetadata?.userMessage && (
-              <p className="text-xs text-muted-foreground italic">
-                {server.stateMetadata.userMessage}
-              </p>
-            )}
+            {/* Error message only */}
             {server.stateMetadata?.errorMessage && (
               <p className="text-xs text-red-400 mt-1">
                 {server.stateMetadata.errorMessage}

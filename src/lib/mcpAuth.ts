@@ -69,7 +69,6 @@ function loadOAuthStates(): void {
     if (stored) {
       const states = JSON.parse(stored) as Array<[string, MCPOAuthState]>
       states.forEach(([key, value]) => oauthStates.set(key, value))
-      console.log('[OAuth] Loaded', states.length, 'states from sessionStorage')
     }
   } catch (error) {
     console.warn('[OAuth] Failed to load states from sessionStorage:', error)
@@ -83,7 +82,6 @@ function saveOAuthStates(): void {
   try {
     const states = Array.from(oauthStates.entries())
     sessionStorage.setItem(OAUTH_STATES_KEY, JSON.stringify(states))
-    console.log('[OAuth] Saved', states.length, 'states to sessionStorage:', states.map(([key]) => key))
   } catch (error) {
     console.warn('[OAuth] Failed to save states to sessionStorage:', error)
   }
@@ -112,7 +110,6 @@ function createOAuthState(
   }
   oauthStates.set(state.state, state)
   saveOAuthStates() // Persist to sessionStorage
-  console.log('[OAuth] Created state:', state.state, ', total states:', oauthStates.size)
   return state
 }
 
@@ -123,14 +120,12 @@ function createOAuthState(
 function getOAuthState(stateId: string): MCPOAuthState | null {
   // Try to load from sessionStorage if not in memory (HMR recovery)
   if (!oauthStates.has(stateId)) {
-    console.log('[OAuth] State not in memory, attempting recovery from sessionStorage...')
     loadOAuthStates()
   }
 
   const state = oauthStates.get(stateId)
   if (!state) {
     console.warn('[OAuth] State not found:', stateId)
-    console.log('[OAuth] Available states:', Array.from(oauthStates.keys()))
     return null
   }
 
@@ -192,14 +187,8 @@ export async function startOAuthFlow(server: MCPServer): Promise<void> {
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)
 
-  console.log('[OAuth] Generated PKCE parameters:', {
-    verifierLength: codeVerifier.length,
-    challengeLength: codeChallenge.length
-  })
-
   // Create OAuth state with config (for callback when server not yet saved)
   const oauthState = createOAuthState(server.id, codeVerifier, server.oauthConfig, server.name)
-  console.log('[OAuth] Created state:', oauthState.state)
 
   // Construct authorization URL
   const authUrl = new URL(server.oauthConfig.authUrl)
@@ -219,18 +208,12 @@ export async function startOAuthFlow(server: MCPServer): Promise<void> {
     authUrl.searchParams.set('scope', server.oauthConfig.scopes.join(' '))
   }
 
-  console.log('[OAuth] Authorization URL:', authUrl.toString())
-
   // Open in system browser
   if (window.electronAPI?.openExternal) {
-    console.log('[OAuth] Opening in system browser via Electron')
     await window.electronAPI.openExternal(authUrl.toString())
   } else {
-    console.log('[OAuth] Opening in new window (fallback)')
     window.open(authUrl.toString(), '_blank')
   }
-
-  console.log('[OAuth] Waiting for callback at jarvis://oauth/callback')
 }
 
 /**
@@ -293,15 +276,12 @@ export async function handleOAuthCallback(
   // Consume the state (one-time use)
   consumeOAuthState(state)
 
-  console.log('[OAuth] State validated for server:', oauthState.serverId)
-
   // Try to get OAuth config from state first (server may not be saved yet)
   let oauthConfig = oauthState.oauthConfig
   let serverToUpdate: MCPServer | undefined
 
   // If config not in state, try to load from saved servers
   if (!oauthConfig) {
-    console.log('[OAuth] Config not in state, loading from saved servers...')
     let mcpServers: MCPServer[] = []
     if (window.electronAPI) {
       mcpServers = await window.electronAPI.readConfig('mcpServers.json') || []
@@ -314,21 +294,11 @@ export async function handleOAuthCallback(
       throw new Error('Server OAuth configuration not found')
     }
     oauthConfig = serverToUpdate.oauthConfig
-  } else {
-    console.log('[OAuth] Using OAuth config from state (server not yet saved)')
   }
 
   if (!oauthConfig.tokenUrl) {
     throw new Error('OAuth configuration missing: tokenUrl is required')
   }
-
-  console.log('[OAuth] OAuth config for token exchange:', {
-    hasClientId: !!oauthConfig.clientId,
-    clientId: oauthConfig.clientId,
-    hasClientSecret: !!oauthConfig.clientSecret,
-    clientSecretLength: oauthConfig.clientSecret?.length,
-    tokenUrl: oauthConfig.tokenUrl
-  })
 
   console.log('[OAuth] Exchanging code for tokens...')
 
@@ -338,32 +308,34 @@ export async function handleOAuthCallback(
       grant_type: 'authorization_code',
       code: code,
       redirect_uri: 'jarvis://oauth/callback',
-      client_id: oauthConfig.clientId || 'jarvis-mcp-client',
       code_verifier: oauthState.codeVerifier
     }
 
-    // Add client_secret if available (required by some providers like Supabase)
-    if (oauthConfig.clientSecret) {
-      tokenParams.client_secret = oauthConfig.clientSecret
-      console.log('[OAuth] Added client_secret to token params')
-    } else {
-      console.warn('[OAuth] No client_secret available in config!')
+    // Build headers with OAuth 2.0 standard authentication
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded'
     }
 
-    console.log('[OAuth] Token request params:', {
-      grant_type: tokenParams.grant_type,
-      hasCode: !!tokenParams.code,
-      redirect_uri: tokenParams.redirect_uri,
-      client_id: tokenParams.client_id,
-      hasCodeVerifier: !!tokenParams.code_verifier,
-      hasClientSecret: !!tokenParams.client_secret
-    })
+    // OAuth 2.0 standard (RFC 6749 Section 2.3.1):
+    // Confidential clients MUST authenticate via Basic Auth header
+    // Public clients include client_id in request body
+    if (oauthConfig.clientSecret) {
+      // Confidential client: Use Basic Authentication with client_id:client_secret
+      const clientId = oauthConfig.clientId || 'jarvis-mcp-client'
+      const credentials = btoa(`${clientId}:${oauthConfig.clientSecret}`)
+      headers['Authorization'] = `Basic ${credentials}`
+    } else if (oauthConfig.clientId) {
+      // Public client: Include client_id in body (no secret)
+      tokenParams.client_id = oauthConfig.clientId
+    } else {
+      // Fallback: Use default client_id
+      tokenParams.client_id = 'jarvis-mcp-client'
+      console.warn('[OAuth] Using fallback client_id (no client configuration)')
+    }
 
     const tokenResponse = await fetch(oauthConfig.tokenUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers,
       body: new URLSearchParams(tokenParams)
     })
 
@@ -383,6 +355,9 @@ export async function handleOAuthCallback(
     // Update OAuth config with tokens
     oauthConfig.accessToken = tokens.access_token
     oauthConfig.refreshToken = tokens.refresh_token
+
+    // Store when tokens were issued (for tracking refresh token age)
+    oauthConfig.tokenIssuedAt = Date.now()
 
     // Calculate token expiration time
     if (tokens.expires_in) {
@@ -468,26 +443,53 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
   try {
     const tokenParams: Record<string, string> = {
       grant_type: 'refresh_token',
-      refresh_token: server.oauthConfig.refreshToken,
-      client_id: server.oauthConfig.clientId || 'jarvis-mcp-client'
+      refresh_token: server.oauthConfig.refreshToken
     }
 
-    // Add client_secret if available (required by some providers like Supabase)
+    // Build headers with OAuth 2.0 standard authentication
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+
+    // OAuth 2.0 standard (RFC 6749 Section 2.3.1):
+    // Confidential clients MUST authenticate via Basic Auth header
+    // Public clients include client_id in request body
     if (server.oauthConfig.clientSecret) {
-      tokenParams.client_secret = server.oauthConfig.clientSecret
+      // Confidential client: Use Basic Authentication with client_id:client_secret
+      const clientId = server.oauthConfig.clientId || 'jarvis-mcp-client'
+      const credentials = btoa(`${clientId}:${server.oauthConfig.clientSecret}`)
+      headers['Authorization'] = `Basic ${credentials}`
+    } else if (server.oauthConfig.clientId) {
+      // Public client: Include client_id in body (no secret)
+      tokenParams.client_id = server.oauthConfig.clientId
+    } else {
+      // Fallback: Use default client_id
+      tokenParams.client_id = 'jarvis-mcp-client'
     }
 
     const tokenResponse = await fetch(server.oauthConfig.tokenUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers,
       body: new URLSearchParams(tokenParams)
     })
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text()
       console.error('[OAuth] Token refresh failed:', errorText)
+
+      // Special handling for 404 - usually means refresh token doesn't exist or expired
+      if (tokenResponse.status === 404) {
+        console.error('[OAuth] Refresh token not found (404) - likely expired or invalidated')
+        console.error('[OAuth] Re-authentication required')
+        throw new Error('Refresh token expired or invalid. Please re-authenticate.')
+      }
+
+      // Special handling for 401 - invalid credentials
+      if (tokenResponse.status === 401) {
+        console.error('[OAuth] Invalid credentials (401) - client_id or client_secret may be wrong')
+        throw new Error('OAuth client authentication failed. Please check credentials.')
+      }
+
       throw new Error(`Token refresh failed: ${tokenResponse.statusText}`)
     }
 
@@ -497,10 +499,13 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
     // Update tokens
     server.oauthConfig.accessToken = tokens.access_token
 
-    // Some providers return a new refresh token
+    // Some providers return a new refresh token (token rotation)
     if (tokens.refresh_token) {
       server.oauthConfig.refreshToken = tokens.refresh_token
+      // New refresh token issued - update issuedAt timestamp
+      server.oauthConfig.tokenIssuedAt = Date.now()
     }
+    // If no new refresh token, keep existing tokenIssuedAt (refresh token is reused)
 
     // Update expiration time
     if (tokens.expires_in) {
@@ -512,6 +517,34 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
       tokenExpiresAt: server.oauthConfig.tokenExpiresAt,
       userMessage: 'Token refreshed successfully'
     })
+
+    // Persist refreshed tokens to storage
+    // This ensures tokens survive app restarts and prevents using stale refresh tokens
+    try {
+      let mcpServers: MCPServer[] = []
+      if (window.electronAPI) {
+        mcpServers = await window.electronAPI.readConfig('mcpServers.json') || []
+      } else {
+        const stored = localStorage.getItem('mcpServers')
+        mcpServers = stored ? JSON.parse(stored) : []
+      }
+
+      const serverIndex = mcpServers.findIndex(s => s.id === server.id)
+      if (serverIndex !== -1) {
+        // Update only the OAuth config to preserve other server properties
+        mcpServers[serverIndex].oauthConfig = server.oauthConfig
+
+        if (window.electronAPI) {
+          await window.electronAPI.writeConfig('mcpServers.json', mcpServers)
+        } else {
+          localStorage.setItem('mcpServers', JSON.stringify(mcpServers))
+        }
+        console.log('[OAuth] Refreshed tokens persisted to storage')
+      }
+    } catch (persistError) {
+      console.error('[OAuth] Failed to persist refreshed tokens:', persistError)
+      // Don't fail the refresh operation if persistence fails
+    }
 
     return server
   } catch (error) {
@@ -531,10 +564,12 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
  * Ensures a server has a valid OAuth token, refreshing if necessary
  *
  * Checks if the token is expired or will expire soon (within 5 minutes)
+ * Also checks if refresh token might be too old (30+ days)
  * Automatically refreshes if needed
  *
  * @param server - MCP server to check
  * @returns Server with valid token
+ * @throws Error if refresh token is likely expired
  */
 export async function ensureValidToken(server: MCPServer): Promise<MCPServer> {
   // No OAuth or no expiration time
@@ -542,15 +577,28 @@ export async function ensureValidToken(server: MCPServer): Promise<MCPServer> {
     return server
   }
 
-  // Check if token is expired or will expire soon (5 minute buffer)
+  // Check refresh token age (if we have tokenIssuedAt)
+  // Many OAuth providers expire refresh tokens after 30 days of inactivity
+  if (server.oauthConfig.tokenIssuedAt) {
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
+    const tokenAge = Date.now() - server.oauthConfig.tokenIssuedAt
+
+    if (tokenAge > THIRTY_DAYS) {
+      const ageInDays = Math.floor(tokenAge / (24 * 60 * 60 * 1000))
+      console.warn(`[OAuth] Refresh token is ${ageInDays} days old, may be expired`)
+      console.warn('[OAuth] If refresh fails, re-authentication will be required')
+    }
+  }
+
+  // Check if access token is expired or will expire soon (5 minute buffer)
   const FIVE_MINUTES = 5 * 60 * 1000
   const timeUntilExpiry = server.oauthConfig.tokenExpiresAt - Date.now()
 
   if (timeUntilExpiry < FIVE_MINUTES) {
-    console.log('[OAuth] Token expired or expiring soon, refreshing...')
+    console.log('[OAuth] Access token expired or expiring soon, refreshing...')
     return await refreshOAuthToken(server)
   }
 
-  console.log('[OAuth] Token is valid, no refresh needed')
+  console.log('[OAuth] Access token is valid, no refresh needed')
   return server
 }

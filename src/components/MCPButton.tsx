@@ -1,5 +1,5 @@
 import { Plug2 } from "lucide-react"
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button"
+import { TooltipIconButton } from "@/components/ui/tooltip-icon-button"
 import type { MCPServer } from "@/types/mcp"
 
 interface MCPButtonProps {
