@@ -7,6 +7,7 @@ import { MCPOverview } from "./MCPOverview"
 import { MCPToolsList } from "./MCPToolsList"
 import { MCPServerLogs } from "./MCPServerLogs"
 import { MCPResourcesList } from "./MCPResourcesList"
+import { MCPPromptsList } from "./MCPPromptsList"
 import { MCPConfigEditor } from "./MCPConfigEditor"
 import { useMCPDetails } from "@/lib/useMCPDetails"
 import { cn } from "@/lib/utils"
@@ -27,7 +28,7 @@ export function MCPServerDetailsDialog({
   onServerUpdate,
   opacity = 1,
 }: MCPServerDetailsDialogProps) {
-  const { tools, resources, isLoading } = useMCPDetails(server || undefined)
+  const { tools, resources, prompts, isLoading } = useMCPDetails(server || undefined)
 
   // Close on Escape key
   useEffect(() => {
@@ -46,6 +47,7 @@ export function MCPServerDetailsDialog({
   const stateConfig = STATE_UI_CONFIG[server.status]
   const toolsCount = isLoading ? '...' : tools.length
   const resourcesCount = isLoading ? '...' : resources.length
+  const promptsCount = isLoading ? '...' : prompts.length
 
   const getStatusColor = () => {
     switch (stateConfig.color) {
@@ -140,6 +142,14 @@ export function MCPServerDetailsDialog({
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="prompts" className="gap-2">
+              Prompts
+              {server.status === 'RUNNING' && (
+                <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
+                  {promptsCount}
+                </span>
+              )}
+            </TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
               <TabsTrigger value="config">Config</TabsTrigger>
             </TabsList>
@@ -156,6 +166,10 @@ export function MCPServerDetailsDialog({
 
             <TabsContent value="resources" className="h-full mt-4 overflow-y-auto">
               <MCPResourcesList server={server} />
+            </TabsContent>
+
+            <TabsContent value="prompts" className="h-full mt-4 overflow-y-auto">
+              <MCPPromptsList server={server} />
             </TabsContent>
 
             <TabsContent value="logs" className="h-full mt-4 overflow-y-auto">

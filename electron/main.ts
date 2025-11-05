@@ -1067,6 +1067,28 @@ ipcMain.handle('mcp:call-tool', async (_event, serverId: string, toolName: strin
   }
 });
 
+// MCP Prompts IPC handlers
+ipcMain.handle('mcp:list-prompts', async (_event, serverId: string) => {
+  try {
+    const result = await mcpProcessManager.sendRequest(serverId, 'prompts/list', {});
+    return { success: true, prompts: result.prompts || [] };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('mcp:get-prompt', async (_event, serverId: string, promptName: string, args?: any) => {
+  try {
+    const result = await mcpProcessManager.sendRequest(serverId, 'prompts/get', {
+      name: promptName,
+      arguments: args || {},
+    });
+    return { success: true, messages: result.messages || [] };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
 // MCP Logs IPC handlers
 ipcMain.handle('mcp:get-logs', async (_event, serverId: string) => {
   try {

@@ -23,6 +23,8 @@ interface ElectronAPI {
   mcpListTools: (serverId: string) => Promise<{ success: boolean; tools?: any[]; error?: string }>
   mcpGetCapabilities: (serverId: string) => Promise<{ success: boolean; capabilities?: any; error?: string }>
   mcpCallTool: (serverId: string, toolName: string, args: Record<string, any>) => Promise<{ success: boolean; result?: any; error?: string }>
+  mcpListPrompts: (serverId: string) => Promise<{ success: boolean; prompts?: any[]; error?: string }>
+  mcpGetPrompt: (serverId: string, promptName: string, args?: Record<string, any>) => Promise<{ success: boolean; messages?: any[]; error?: string }>
   mcpGetLogs: (serverId: string) => Promise<any[]>
   mcpClearLogs: (serverId: string) => Promise<void>
   onMCPLog: (callback: (log: any) => void) => () => void

@@ -493,6 +493,16 @@ export class MCPStateMachineManager {
   }
 
   /**
+   * Get all machines with their server IDs
+   */
+  getAllMachines(): Array<{ serverId: string; machine: MCPStateMachine }> {
+    return Array.from(this.machines.entries()).map(([serverId, machine]) => ({
+      serverId,
+      machine
+    }))
+  }
+
+  /**
    * Register a global state change listener
    * This listener will be called for ALL server state changes
    */

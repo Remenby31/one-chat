@@ -5,21 +5,30 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   ErrorCode,
   McpError
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryManager } from './memory-manager.js';
 import { MemoryConfig } from './types.js';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Calculate __dirname for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const DEFAULT_CONFIG: MemoryConfig = {
-  vaultPath: process.env.OBSIDIAN_VAULT_PATH || './vault',
+  vaultPath: process.env.OBSIDIAN_VAULT_PATH ||
+             path.resolve(__dirname, '../../../../vault'),
   obsidianCompatible: true,
   ignorePatterns: ['.obsidian', '.trash', '.git'],
   wikilinks: true,
   tagsFormat: 'both',
   enforceStrictGraph: true,
-  rootNoteName: '_index.md'
+  rootNoteName: 'index.md'
 };
 
 class ObsidianMemoryServer {
@@ -35,6 +44,7 @@ class ObsidianMemoryServer {
       {
         capabilities: {
           tools: {},
+          prompts: {},
         },
       }
     );
@@ -461,15 +471,121 @@ class ObsidianMemoryServer {
         );
       }
     });
+
+    // Prompts handlers
+    this.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+      prompts: [
+        {
+          name: 'tool_call:memory_index',
+          description: 'Simulated tool call to retrieve the memory vault root index',
+        },
+        {
+          name: 'tool_result:memory_index',
+          description: 'Result of the memory_get_root tool call - shows vault structure',
+        }
+      ]
+    }));
+
+    this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+      const { name } = request.params;
+
+      if (name === 'tool_call:memory_index') {
+        // Return structured tool call format for parsing by injection system
+        const toolCallData = {
+          type: 'tool_call',
+          tool_name: 'memory_get_root',
+          arguments: {}
+        };
+
+        return {
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: JSON.stringify(toolCallData)
+              }
+            }
+          ]
+        };
+      }
+
+      if (name === 'tool_result:memory_index') {
+        try {
+          // Ensure memory manager is initialized
+          if (!this.memoryManager) {
+            throw new McpError(
+              ErrorCode.InternalError,
+              'Memory manager not initialized'
+            );
+          }
+
+          let rootNote = await this.memoryManager.getRootNote();
+          if (!rootNote) {
+            // Try to initialize if not already done
+            console.error('[obsidian-memory] Root note not found, attempting to initialize...');
+            await this.memoryManager.initialize();
+
+            // Try again after initialization
+            rootNote = await this.memoryManager.getRootNote();
+            if (!rootNote) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                'Root note not found even after initialization. Check vault path and _index.md file.'
+              );
+            }
+          }
+
+          // Format the root note as a tool result (JSON format)
+          const toolResult = JSON.stringify({
+            success: true,
+            tool: 'memory_get_root',
+            data: {
+              id: rootNote.id,
+              title: rootNote.title,
+              path: rootNote.path,
+              content: rootNote.content,
+              links: rootNote.links,
+              backlinks: rootNote.backlinks,
+              tags: rootNote.frontmatter.tags || [],
+              created: rootNote.created,
+              modified: rootNote.modified
+            }
+          }, null, 2);
+
+          return {
+            messages: [
+              {
+                role: 'user',
+                content: {
+                  type: 'text',
+                  text: toolResult
+                }
+              }
+            ]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get memory index: ${error}`
+          );
+        }
+      }
+
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Unknown prompt: ${name}`
+      );
+    });
   }
 
   async start() {
     await this.memoryManager.initialize();
-    
+
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    
-    console.log('Obsidian Memory MCP Server started');
+
+    console.error('Obsidian Memory MCP Server started');
   }
 }
 

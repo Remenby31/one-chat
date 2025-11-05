@@ -20,6 +20,10 @@ interface ExtractedEntities {
  */
 function extractTextFromMessage(message: ThreadMessage): string {
   // ChatMessage.content is already a string
+  // Handle null or undefined content (e.g., from tool_call messages)
+  if (!message.content || typeof message.content !== 'string') {
+    return ''
+  }
   return message.content.trim()
 }
 

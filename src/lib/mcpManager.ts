@@ -402,6 +402,65 @@ export class MCPManager {
   }
 
   /**
+   * List prompts from an MCP server
+   */
+  async listPromptsFromServer(serverId: string): Promise<Array<{ name: string; description?: string; arguments?: any[] }>> {
+    if (!window.electronAPI?.mcpListPrompts) {
+      throw new Error('MCP functionality requires Electron')
+    }
+
+    const result = await window.electronAPI.mcpListPrompts(serverId)
+
+    if (result.success && result.prompts) {
+      return result.prompts
+    }
+
+    throw new Error(result.error || 'Failed to list prompts')
+  }
+
+  /**
+   * Get prompt content from an MCP server
+   */
+  async getPromptContent(serverId: string, promptName: string, args?: Record<string, any>): Promise<string> {
+    if (!window.electronAPI?.mcpGetPrompt) {
+      throw new Error('MCP functionality requires Electron')
+    }
+
+    const result = await window.electronAPI.mcpGetPrompt(serverId, promptName, args)
+
+    if (result.success && result.messages) {
+      // Combine all messages into a single string
+      return result.messages
+        .map((msg: any) => {
+          if (typeof msg.content === 'string') {
+            return msg.content
+          }
+          if (msg.content?.text) {
+            return msg.content.text
+          }
+          return JSON.stringify(msg.content)
+        })
+        .join('\n\n')
+    }
+
+    throw new Error(result.error || 'Failed to get prompt content')
+  }
+
+  /**
+   * Get list of connected servers
+   */
+  getConnectedServers(): Array<{ id: string; name?: string }> {
+    // Get all server IDs that have machines (means they've been initialized)
+    const machines = stateMachineManager.getAllMachines()
+    return machines
+      .filter(({ machine }) => machine.isRunning())
+      .map(({ serverId }) => ({
+        id: serverId,
+        name: serverId
+      }))
+  }
+
+  /**
    * Test connection to an MCP server
    * This will temporarily start the server if needed, test the connection, and stop it
    */

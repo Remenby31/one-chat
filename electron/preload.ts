@@ -31,6 +31,8 @@ const electronAPI = {
   mcpListTools: (serverId: string) => ipcRenderer.invoke('mcp:list-tools', serverId),
   mcpGetCapabilities: (serverId: string) => ipcRenderer.invoke('mcp:get-capabilities', serverId),
   mcpCallTool: (serverId: string, toolName: string, args: any) => ipcRenderer.invoke('mcp:call-tool', serverId, toolName, args),
+  mcpListPrompts: (serverId: string) => ipcRenderer.invoke('mcp:list-prompts', serverId),
+  mcpGetPrompt: (serverId: string, promptName: string, args?: any) => ipcRenderer.invoke('mcp:get-prompt', serverId, promptName, args),
   mcpImportClaudeDesktop: () => ipcRenderer.invoke('mcp:import-claude-desktop'),
 
   // MCP Logs

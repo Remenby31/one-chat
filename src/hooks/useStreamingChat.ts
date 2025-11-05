@@ -5,6 +5,7 @@ import type { ModelConfig } from '@/types/model'
 import type { ApiKey } from '@/types/apiKey'
 import type { MCPServer, MCPTool } from '@/types/mcp'
 import { mcpManager } from '@/lib/mcpManager'
+import { getInjectedMessages } from '@/lib/mcpPromptInjection'
 
 /**
  * Main hook for managing streaming chat with MCP tool support
@@ -186,36 +187,55 @@ export function useStreamingChat(
       // Get current state synchronously (Zustand updates are async, so we need getState())
       const currentMessages = useChatStore.getState().messages
 
-      // Add system prompt if available
+      // Fetch and inject conventional prompts from MCP servers
+      let injectedMessages: any[] = []
+      try {
+        injectedMessages = await getInjectedMessages(mcpManager)
+        if (injectedMessages.length > 0) {
+          console.log(`[useStreamingChat] Injected ${injectedMessages.length} conventional prompts from MCP servers`)
+        }
+      } catch (error) {
+        console.warn('[useStreamingChat] Failed to fetch conventional prompts:', error)
+      }
+
+      // Add system prompt if available (merge with injected system prompts)
       const systemPrompt = threadStore.currentSystemPrompt
-      const systemMessage = systemPrompt
-        ? [{ role: 'system' as const, content: systemPrompt }]
-        : []
+
+      // If we have both injected system prompts and thread system prompt, concatenate them
+      if (systemPrompt && injectedMessages.length > 0 && injectedMessages[0].role === 'system') {
+        injectedMessages[0].content += `\n\n---\n\n[Thread System Prompt]\n${systemPrompt}`
+      } else if (systemPrompt) {
+        // No injected system prompt, just add thread system prompt
+        injectedMessages.unshift({ role: 'system' as const, content: systemPrompt })
+      }
 
       // Convert store messages to OpenAI format (exclude empty and streaming messages)
+      const userConversationMessages = currentMessages
+        .filter(m => m.content.trim() !== '' && !m.isStreaming)
+        .map((msg) => {
+          // Include tool_calls if present
+          const message: any = {
+            role: msg.role,
+            content: msg.content
+          }
+
+          // Add tool_call_id for tool messages
+          if (msg.role === 'tool' && msg.tool_call_id) {
+            message.tool_call_id = msg.tool_call_id
+          }
+
+          // Add tool_calls for assistant messages with tool requests
+          if (msg.role === 'assistant' && msg.tool_call_requests) {
+            message.tool_calls = msg.tool_call_requests
+          }
+
+          return message
+        })
+
+      // Build final conversation: injected prompts + user conversation
       let conversationMessages = [
-        ...systemMessage,
-        ...currentMessages
-          .filter(m => m.content.trim() !== '' && !m.isStreaming)
-          .map((msg) => {
-            // Include tool_calls if present
-            const message: any = {
-              role: msg.role,
-              content: msg.content
-            }
-
-            // Add tool_call_id for tool messages
-            if (msg.role === 'tool' && msg.tool_call_id) {
-              message.tool_call_id = msg.tool_call_id
-            }
-
-            // Add tool_calls for assistant messages with tool requests
-            if (msg.role === 'assistant' && msg.tool_call_requests) {
-              message.tool_calls = msg.tool_call_requests
-            }
-
-            return message
-          })
+        ...injectedMessages,
+        ...userConversationMessages
       ]
 
       // Multi-turn loop to handle tool calls

@@ -65,23 +65,30 @@ Toutes les notes doivent être accessibles depuis cette note racine.`;
 
   async rebuildIndex(): Promise<void> {
     this.notesIndex.clear();
-    
+
     const pattern = path.join(this.config.vaultPath, '**/*.md');
+    console.error(`[rebuildIndex] Vault path: ${this.config.vaultPath}`);
+    console.error(`[rebuildIndex] Glob pattern: ${pattern}`);
+
     const files = await glob(pattern, {
-      ignore: this.config.ignorePatterns.map(p => 
+      ignore: this.config.ignorePatterns.map(p =>
         path.join(this.config.vaultPath, p)
       )
     });
 
+    console.error(`[rebuildIndex] Found ${files.length} files:`, files);
+
     for (const file of files) {
       try {
         const note = await this.loadNoteFromFile(file);
+        console.error(`[rebuildIndex] Loaded note: ${note.id} (isRoot: ${note.isRoot}) from ${file}`);
         this.notesIndex.set(note.id, note);
       } catch (error) {
         console.error(`Failed to load note ${file}:`, error);
       }
     }
 
+    console.error(`[rebuildIndex] Total notes in index: ${this.notesIndex.size}`);
     await this.updateBacklinks();
     this.buildSearchIndex();
   }
@@ -489,7 +496,11 @@ Toutes les notes doivent être accessibles depuis cette note racine.`;
    * Get the root note
    */
   async getRootNote(): Promise<import('./types.js').MemoryNote | null> {
-    const rootNote = Array.from(this.notesIndex.values()).find(n => n.isRoot);
+    console.error(`[getRootNote] Searching in ${this.notesIndex.size} notes`);
+    const allNotes = Array.from(this.notesIndex.values());
+    console.error(`[getRootNote] Notes:`, allNotes.map(n => ({ id: n.id, isRoot: n.isRoot, path: n.path })));
+    const rootNote = allNotes.find(n => n.isRoot);
+    console.error(`[getRootNote] Found root:`, rootNote ? rootNote.id : 'NOT FOUND');
     return rootNote || null;
   }
 }

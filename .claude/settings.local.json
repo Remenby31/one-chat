@@ -81,7 +81,8 @@
       "Bash(del \"C:\\Users\\cruve\\OneDrive\\Projets\\one-chat\\fix-config.cjs\")",
       "Bash(del:*)",
       "Bash(npm uninstall:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(test -f:*)"
     ],
     "deny": [],
     "ask": []
