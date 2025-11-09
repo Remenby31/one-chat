@@ -212,7 +212,7 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
         continue;
       }
     } else {
-      console.error(`[mcpPromptInjection] Tool result without call: ${toolCallId}, skipping`);
+      console.error(`[mcpPromptInjection] Tool call missing for ID ${toolCallId}, skipping`);
       continue;
     }
 
@@ -224,6 +224,8 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
         tool_call_id: toolCallId,
         name: toolCallId,
       });
+    } else if (result && !toolCallAdded) {
+      console.error(`[mcpPromptInjection] Tool result exists but tool_calls not added for ${toolCallId}`);
     }
   }
 
@@ -246,5 +248,6 @@ export async function getInjectedMessages(
   mcpManager: MCPManager
 ): Promise<OpenAIMessage[]> {
   const prompts = await fetchAllConventionalPrompts(mcpManager);
-  return buildInjectedMessages(prompts);
+  const messages = buildInjectedMessages(prompts);
+  return messages;
 }

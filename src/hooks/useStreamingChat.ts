@@ -191,9 +191,6 @@ export function useStreamingChat(
       let injectedMessages: any[] = []
       try {
         injectedMessages = await getInjectedMessages(mcpManager)
-        if (injectedMessages.length > 0) {
-          console.log(`[useStreamingChat] Injected ${injectedMessages.length} conventional prompts from MCP servers`)
-        }
       } catch (error) {
         console.warn('[useStreamingChat] Failed to fetch conventional prompts:', error)
       }
@@ -210,8 +207,17 @@ export function useStreamingChat(
       }
 
       // Convert store messages to OpenAI format (exclude empty and streaming messages)
+      // BUT: Keep assistant messages with tool_calls even if content is empty
       const userConversationMessages = currentMessages
-        .filter(m => m.content.trim() !== '' && !m.isStreaming)
+        .filter(m => {
+          // Skip streaming messages
+          if (m.isStreaming) return false
+          // Keep messages with content
+          if (m.content.trim() !== '') return true
+          // Keep assistant messages with tool_call_requests (they can be empty)
+          if (m.role === 'assistant' && m.tool_call_requests) return true
+          return false
+        })
         .map((msg) => {
           // Include tool_calls if present
           const message: any = {
@@ -256,8 +262,6 @@ export function useStreamingChat(
           requestBody.tools = openaiTools
         }
 
-        console.log(`[SSE] 🌐 Initiating request to: ${apiKey.baseURL}/chat/completions`)
-        console.log(`[SSE] 📤 Request body: ${JSON.stringify({ model: modelConfig.model, messages: conversationMessages.length + ' messages', stream: true, tools: openaiTools.length > 0 ? openaiTools.length + ' tools' : 'none' })}`)
 
         const requestStartTime = performance.now()
         const response = await fetch(`${apiKey.baseURL}/chat/completions`, {
@@ -272,7 +276,6 @@ export function useStreamingChat(
 
         const responseReceivedTime = performance.now()
         const connectionTime = responseReceivedTime - requestStartTime
-        console.log(`[SSE] ✅ Response received in ${connectionTime.toFixed(0)}ms (HTTP ${response.status})`)
 
         if (!response.ok) {
           const errorText = await response.text()
@@ -293,8 +296,6 @@ export function useStreamingChat(
         let firstTokenTime: number | null = null
         let chunkCounter = 0
 
-        console.log('[SSE] 🚀 Starting SSE stream processing...')
-
         while (true) {
           // Measure time waiting for next chunk from network
           const readStart = performance.now()
@@ -303,38 +304,21 @@ export function useStreamingChat(
           const readTime = readEnd - readStart
 
           if (done) {
-            console.log('[SSE] ✅ Stream complete, reader done')
             break
           }
 
           chunkCounter++
-          const chunkSize = value?.length || 0
 
-          // Log read timing and chunk size
-          if (readTime > 10) {
-            console.warn(`[SSE] ⏱️  Chunk #${chunkCounter}: reader.read() took ${readTime.toFixed(0)}ms (slow!) | Size: ${chunkSize} bytes`)
-          } else {
-            console.log(`[SSE] 📦 Chunk #${chunkCounter}: received in ${readTime.toFixed(0)}ms | Size: ${chunkSize} bytes`)
-          }
-
-          const decodeStart = performance.now()
           const chunkText = decoder.decode(value, { stream: true })
-          const decodeEnd = performance.now()
-
-          console.log(`[SSE] 🔤 Decoded (${(decodeEnd - decodeStart).toFixed(1)}ms): "${chunkText.substring(0, 80).replace(/\n/g, '\\n')}${chunkText.length > 80 ? '...' : ''}"`)
 
           buffer += chunkText
           const lines = buffer.split('\n')
-          const lineCount = lines.length - 1 // -1 because last element is the incomplete line
           buffer = lines.pop() || ''
-
-          console.log(`[SSE] 📋 Split into ${lineCount} complete lines | Buffer remaining: ${buffer.length} chars ${buffer.length > 0 ? `("${buffer.substring(0, 30)}...")` : ''}`)
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim()
               if (data === '[DONE]') {
-                console.log('[SSE] 🏁 Received [DONE] marker')
                 break
               }
 
@@ -348,26 +332,12 @@ export function useStreamingChat(
                 if (delta?.content) {
                   if (firstTokenTime === null) {
                     firstTokenTime = performance.now()
-                    const ttft = firstTokenTime - requestStartTime
-                    console.log(`[SSE] 🎯 FIRST TOKEN! TTFT: ${ttft.toFixed(0)}ms`)
                   }
-
-                  const contentLength = delta.content.length
-                  console.log(`[SSE] 💬 Delta content (parse: ${(parseEnd - parseStart).toFixed(1)}ms): "${delta.content.substring(0, 50).replace(/\n/g, '\\n')}${delta.content.length > 50 ? '...' : ''}" (${contentLength} chars)`)
 
                   fullText += delta.content
 
-                  const updateStart = performance.now()
                   store.updateLastMessage(fullText)
                   store.setStreamingText(fullText)
-                  const updateEnd = performance.now()
-                  const updateTime = updateEnd - updateStart
-
-                  if (updateTime > 5) {
-                    console.warn(`[SSE] ⚠️  Store update took ${updateTime.toFixed(1)}ms (slow!)`)
-                  } else {
-                    console.log(`[SSE] 💾 Store updated in ${updateTime.toFixed(1)}ms | Total text length: ${fullText.length}`)
-                  }
                 }
 
                 // Handle tool calls
@@ -392,24 +362,10 @@ export function useStreamingChat(
                   }
                 }
               } catch (e) {
-                console.warn('[SSE] ❌ Failed to parse SSE line:', line, e)
+                // Silently skip unparseable lines
               }
             }
           }
-        }
-
-        // Log final statistics
-        const streamEndTime = performance.now()
-        const totalStreamTime = streamEndTime - requestStartTime
-        const ttft = firstTokenTime ? (firstTokenTime - requestStartTime) : null
-        console.log(`[SSE] 📊 Stream Statistics:`)
-        console.log(`  • Total chunks received: ${chunkCounter}`)
-        console.log(`  • Total characters: ${fullText.length}`)
-        console.log(`  • TTFT (Time To First Token): ${ttft ? ttft.toFixed(0) + 'ms' : 'N/A'}`)
-        console.log(`  • Total stream time: ${totalStreamTime.toFixed(0)}ms`)
-        console.log(`  • Average throughput: ${(fullText.length / (totalStreamTime / 1000)).toFixed(0)} chars/sec`)
-        if (buffer.length > 0) {
-          console.warn(`[SSE] ⚠️  Incomplete data remaining in buffer: "${buffer.substring(0, 50)}..."`)
         }
 
         // If no tool calls, we're done

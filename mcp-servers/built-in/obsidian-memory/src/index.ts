@@ -186,29 +186,6 @@ class ObsidianMemoryServer {
           }
         },
         {
-          name: 'memory_link',
-          description: 'Create a link between two notes',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              from: { type: 'string', description: 'Source note identifier' },
-              to: { type: 'string', description: 'Target note identifier' }
-            },
-            required: ['from', 'to']
-          }
-        },
-        {
-          name: 'memory_backlinks',
-          description: 'Get all notes that link to a specific note',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              identifier: { type: 'string', description: 'Note identifier' }
-            },
-            required: ['identifier']
-          }
-        },
-        {
           name: 'memory_graph',
           description: 'Get the knowledge graph of all notes and their connections',
           inputSchema: {
@@ -437,41 +414,6 @@ class ObsidianMemoryServer {
                       title: n.title,
                       path: n.path,
                       excerpt: n.content.substring(0, 200) + '...'
-                    })),
-                    null,
-                    2
-                  )
-                }
-              ]
-            };
-          }
-
-          case 'memory_link': {
-            const success = await this.memoryManager.createLink(
-              args.from as string,
-              args.to as string
-            );
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify({ success }, null, 2)
-                }
-              ]
-            };
-          }
-
-          case 'memory_backlinks': {
-            const backlinks = await this.memoryManager.getBacklinks(args.identifier as string);
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(
-                    backlinks.map(n => ({
-                      id: n.id,
-                      title: n.title,
-                      path: n.path
                     })),
                     null,
                     2

@@ -62,14 +62,14 @@ Utilise memory_read pour lire la note "Ma première note"
 Utilise memory_search pour chercher "test" dans mes notes
 ```
 
-### Créer des liens manuels
+### Créer des liens
 ```
 Utilise memory_update pour ajouter [[Note A]] dans le contenu de "Note B"
 ```
 
-### Voir les backlinks
+Ou lors de la création:
 ```
-Utilise memory_backlinks pour voir toutes les notes qui référencent "Note B"
+memory_create avec title: "Note B" et content: "Contenu lié à [[Note A]]"
 ```
 
 ### Upsert (créer ou mettre à jour)
@@ -113,13 +113,11 @@ Contenu...
 |-------|-------------|
 | `memory_create` | Créer une nouvelle note (libre, sans obligation de liens) |
 | `memory_read` | Lire une note existante |
-| `memory_update` | Modifier une note et ajouter des liens |
+| `memory_update` | Modifier une note et ajouter des [[wikilinks]] |
 | `memory_upsert` | Créer ou mettre à jour une note en une opération |
 | `memory_delete` | Supprimer une note |
 | `memory_list` | Lister toutes les notes |
 | `memory_search` | Rechercher dans les notes |
-| `memory_link` | Créer un lien entre notes |
-| `memory_backlinks` | Obtenir les backlinks |
 | `memory_graph` | Obtenir le graphe de connaissances |
 | `memory_get_root` | Obtenir la note racine (root-memory) |
 | `memory_validate_graph` | Valider la connectivité du graphe |

@@ -146,7 +146,7 @@ All notes should be accessible from this root note or connected through other no
       backlinks: [],
       created: frontmatter.created ? new Date(frontmatter.created) : stats.birthtime,
       modified: frontmatter.modified ? new Date(frontmatter.modified) : stats.mtime,
-      isRoot: frontmatter.id === 'root-index'
+      isRoot: frontmatter.id === 'root-memory' || frontmatter.id === 'root-index'
     };
 
     return note;
