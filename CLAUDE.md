@@ -323,7 +323,7 @@ MCP servers like Supabase require OAuth 2.1 authentication. The app implements a
 - **File watching**: Config files watched for changes with automatic reload across all windows
 - **Terminology**: UI uses "Endpoints" instead of "API Keys" for user-facing labels
 - **Do not launch app** - The user will handle launching and testing
-- **No legacy or fallback code** - Only clean code, good practices of coding
+- **No legacy or fallback code** - Only clean code, good practices of coding. The architecture must be clean and clear.
 
 ### Security & Storage
 - **Storage location**: `AppData/Roaming/Jarvis` on Windows, `~/Library/Application Support/Jarvis` on macOS

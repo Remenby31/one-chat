@@ -84,7 +84,9 @@
       "Bash(find:*)",
       "Bash(test -f:*)",
       "Bash(timeout 5 bash:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git --no-pager diff src/lib/builtInServers.ts src/lib/mcpStateMachine.ts)",
+      "Bash(git --no-pager diff HEAD -- src/lib/builtInServers.ts)"
     ],
     "deny": [],
     "ask": []

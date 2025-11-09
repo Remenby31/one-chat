@@ -13,7 +13,7 @@ export const ThreadListPanel: FC<ThreadListPanelProps> = ({
   onThreadSelect,
   currentThreadId
 }) => {
-  const { threads, loadThreads, deleteThread } = useThreadStore()
+  const { threads, loadThreads, deleteThread, isDraftThread } = useThreadStore()
 
   // Load threads on mount
   useEffect(() => {
@@ -31,7 +31,10 @@ export const ThreadListPanel: FC<ThreadListPanelProps> = ({
     await deleteThread(threadId)
   }
 
-  if (threads.length === 0) {
+  // Filter out draft threads (not yet persisted to disk)
+  const persistedThreads = threads.filter(thread => !isDraftThread(thread.id))
+
+  if (persistedThreads.length === 0) {
     return (
       <div className="text-muted-foreground text-sm p-4">
         No conversations yet. Start a new chat!
@@ -41,7 +44,7 @@ export const ThreadListPanel: FC<ThreadListPanelProps> = ({
 
   return (
     <div className="flex flex-col gap-1">
-      {threads.map((thread) => (
+      {persistedThreads.map((thread) => (
         <div
           key={thread.id}
           className={cn(

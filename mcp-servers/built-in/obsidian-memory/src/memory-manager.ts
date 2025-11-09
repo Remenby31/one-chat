@@ -36,27 +36,47 @@ export class MemoryManager {
   }
 
   /**
-   * Ensure root index note exists
-   * This is the only note that can exist without links
+   * Ensure root memory note exists
+   * This is the entry point of the knowledge graph
    */
   private async ensureRootNote(): Promise<void> {
     const rootPath = path.join(this.config.vaultPath, this.config.rootNoteName);
+
+    // Handle migration from old index.md to root-memory.md
+    if (this.config.rootNoteName === 'root-memory.md') {
+      const oldIndexPath = path.join(this.config.vaultPath, 'index.md');
+      try {
+        await fs.access(oldIndexPath);
+        // Old index.md exists, rename it
+        await fs.rename(oldIndexPath, rootPath);
+        // Update frontmatter ID if possible
+        const { frontmatter, body } = await parseMarkdownFile(rootPath);
+        const newFrontmatter = {
+          ...frontmatter,
+          id: 'root-memory'
+        };
+        await writeMarkdownFile(rootPath, body, newFrontmatter);
+        return;
+      } catch {
+        // Old index.md doesn't exist, continue to create new root note
+      }
+    }
 
     try {
       await fs.access(rootPath);
     } catch {
       // Root note doesn't exist, create it
-      const rootContent = `# Index Principal
+      const rootContent = `# Root Memory
 
-Point d'entrée de la base de connaissances.
+Entry point to the knowledge graph.
 
-Toutes les notes doivent être accessibles depuis cette note racine.`;
+All notes should be accessible from this root note or connected through other notes.`;
 
       const rootFrontmatter = {
-        id: 'root-index',
+        id: 'root-memory',
         created: formatDate(new Date()),
         modified: formatDate(new Date()),
-        tags: ['index', 'root']
+        tags: ['root']
       };
 
       await writeMarkdownFile(rootPath, rootContent, rootFrontmatter);
@@ -197,53 +217,10 @@ Toutes les notes doivent être accessibles depuis cette note racine.`;
     title: string,
     content: string,
     folder?: string,
-    frontmatter?: Partial<NoteFrontmatter>,
-    linkedFrom?: string | string[]
+    frontmatter?: Partial<NoteFrontmatter>
   ): Promise<MemoryNote> {
-    // STRICT VALIDATION: Enforce graph connectivity
-    if (this.config.enforceStrictGraph) {
-      // Extract links from content
-      const linksInContent = extractWikiLinks(content);
-      const hasLinksInContent = linksInContent.length > 0;
-      const hasLinkedFrom = linkedFrom && (Array.isArray(linkedFrom) ? linkedFrom.length > 0 : true);
-
-      // Validate that note will be connected
-      if (!hasLinksInContent && !hasLinkedFrom) {
-        throw new Error(
-          'ORPHAN_NOTE_REJECTED: Cannot create orphaned note. ' +
-          'Must specify linkedFrom parameter OR include [[wiki-links]] in content.'
-        );
-      }
-
-      // Validate linkedFrom notes exist
-      if (hasLinkedFrom) {
-        const linkedFromArray = Array.isArray(linkedFrom) ? linkedFrom : [linkedFrom];
-        for (const sourceId of linkedFromArray) {
-          const sourceNote = await this.readNote(sourceId);
-          if (!sourceNote) {
-            throw new Error(
-              `INVALID_LINK_TARGET: Source note "${sourceId}" does not exist. ` +
-              `Cannot link from non-existent note.`
-            );
-          }
-        }
-      }
-
-      // Validate links in content point to existing notes
-      if (hasLinksInContent) {
-        for (const link of linksInContent) {
-          const targetNote = this.findNoteByPath(link.target);
-          if (!targetNote) {
-            throw new Error(
-              `INVALID_LINK_TARGET: Target note "${link.target}" does not exist. ` +
-              `All links must point to existing notes.`
-            );
-          }
-        }
-      }
-    }
-
-    // Validation passed, create the note
+    // Create note without strict graph validation
+    // LLM is responsible for managing links and graph connectivity
     const noteId = generateNoteId();
     const now = new Date();
 
@@ -266,21 +243,6 @@ Toutes les notes doivent être accessibles depuis cette note racine.`;
 
     const note = await this.loadNoteFromFile(fullPath);
     this.notesIndex.set(note.id, note);
-
-    // Add links from source notes if linkedFrom specified
-    if (linkedFrom) {
-      const linkedFromArray = Array.isArray(linkedFrom) ? linkedFrom : [linkedFrom];
-      for (const sourceId of linkedFromArray) {
-        const sourceNote = await this.readNote(sourceId);
-        if (sourceNote) {
-          const linkText = `[[${note.title}]]`;
-          if (!sourceNote.content.includes(linkText)) {
-            const newContent = sourceNote.content + `\n${linkText}`;
-            await this.updateNote(sourceId, { content: newContent });
-          }
-        }
-      }
-    }
 
     await this.updateBacklinks();
     this.buildSearchIndex();
@@ -310,7 +272,7 @@ Toutes les notes doivent être accessibles depuis cette note racine.`;
 
     const fullPath = path.join(this.config.vaultPath, note.path);
     const { frontmatter: currentFrontmatter, body } = await parseMarkdownFile(fullPath);
-    
+
     const newContent = updates.content ?? body;
     const newFrontmatter: NoteFrontmatter = {
       ...currentFrontmatter,
@@ -319,14 +281,50 @@ Toutes les notes doivent être accessibles depuis cette note racine.`;
     };
 
     await writeMarkdownFile(fullPath, newContent, newFrontmatter);
-    
+
     const updatedNote = await this.loadNoteFromFile(fullPath);
     this.notesIndex.set(updatedNote.id, updatedNote);
-    
+
     await this.updateBacklinks();
     this.buildSearchIndex();
-    
+
     return updatedNote;
+  }
+
+  /**
+   * Upsert a note: Update if exists, create if doesn't exist
+   * Combines the logic of both createNote and updateNote
+   */
+  async upsertNote(
+    identifier: string,
+    content: string,
+    frontmatter?: Partial<NoteFrontmatter>,
+    folder?: string
+  ): Promise<MemoryNote> {
+    // Try to find existing note
+    const existingNote = await this.readNote(identifier);
+
+    if (existingNote) {
+      // Note exists: use update logic
+      const updates = {
+        content,
+        frontmatter
+      };
+
+      const updatedNote = await this.updateNote(existingNote.id, updates);
+      if (!updatedNote) {
+        throw new Error(`Failed to update note: ${identifier}`);
+      }
+      return updatedNote;
+    }
+
+    // Note doesn't exist: use create logic
+    // Use identifier as title if it looks like a title, otherwise generate new note
+    const title = identifier.includes('/') || identifier.startsWith('root-')
+      ? 'Untitled'
+      : identifier;
+
+    return await this.createNote(title, content, folder, frontmatter);
   }
 
   async deleteNote(identifier: string): Promise<boolean> {

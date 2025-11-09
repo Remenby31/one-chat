@@ -23,6 +23,7 @@ interface ThreadState {
   threads: ThreadMetadata[]
   isLoading: boolean
   currentSystemPrompt: string | null
+  draftThreads: Map<string, Thread>  // Draft threads (in-memory, not persisted to disk)
 
   // Actions
   loadThreads: () => Promise<void>
@@ -33,6 +34,7 @@ interface ThreadState {
   updateThreadTitle: (threadId: string, messages: ChatMessage[]) => Promise<void>
   setCurrentThreadId: (threadId: string | null) => void
   setCurrentSystemPrompt: (systemPrompt: string | null) => void
+  isDraftThread: (threadId: string) => boolean  // Helper to check if thread is a draft
 }
 
 /**
@@ -77,6 +79,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   threads: [],
   isLoading: false,
   currentSystemPrompt: null,
+  draftThreads: new Map(),  // In-memory draft threads
 
   /**
    * Load all threads from storage
@@ -141,7 +144,8 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   },
 
   /**
-   * Create a new thread
+   * Create a new thread (draft - not persisted to disk yet)
+   * Thread will be persisted when first message is saved via saveThreadMessages()
    */
   createThread: async (systemPrompt?: string) => {
     const threadId = Date.now().toString()
@@ -158,28 +162,18 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       systemPrompt
     }
 
-    // Save empty thread
-    const filename = generateThreadFileName(threadId, 'New conversation')
+    // Add to draft threads (in-memory only, NOT saved to disk)
+    set((state) => {
+      const newDrafts = new Map(state.draftThreads)
+      newDrafts.set(threadId, newThread)
 
-    if (window.electronAPI) {
-      await window.electronAPI.writeConfig(`conversations/${filename}`, newThread)
-    } else {
-      localStorage.setItem(filename, JSON.stringify(newThread))
-    }
-
-    // Add to list and set as current
-    set((state) => ({
-      threads: [newThread.metadata, ...state.threads],
-      currentThreadId: threadId,
-      currentSystemPrompt: systemPrompt || null
-    }))
-
-    // Save current thread ID
-    if (window.electronAPI) {
-      await window.electronAPI.writeConfig('currentThread.json', threadId)
-    } else {
-      localStorage.setItem('currentThread', threadId)
-    }
+      return {
+        threads: [newThread.metadata, ...state.threads],
+        draftThreads: newDrafts,
+        currentThreadId: threadId,
+        currentSystemPrompt: systemPrompt || null
+      }
+    })
 
     return threadId
   },
@@ -217,13 +211,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         currentThreadId: threadId,
         currentSystemPrompt: threadData.systemPrompt || null
       })
-
-      // Save current thread ID
-      if (window.electronAPI) {
-        await window.electronAPI.writeConfig('currentThread.json', threadId)
-      } else {
-        localStorage.setItem('currentThread', threadId)
-      }
 
       return {
         messages: threadData.messages,
@@ -268,6 +255,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
 
   /**
    * Save thread messages
+   * If thread is a draft (not yet persisted), it will be persisted on first save
    */
   saveThreadMessages: async (threadId: string, messages: ChatMessage[], systemPrompt?: string) => {
     try {
@@ -276,6 +264,9 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         console.error(`[ThreadStore] Thread ${threadId} not found for save`)
         return
       }
+
+      // Check if this is a draft thread (first time being persisted)
+      const isDraft = get().draftThreads.has(threadId)
 
       // Update metadata
       const updatedMetadata: ThreadMetadata = {
@@ -298,6 +289,15 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         await window.electronAPI.writeConfig(`conversations/${filename}`, threadData)
       } else {
         localStorage.setItem(filename, JSON.stringify(threadData))
+      }
+
+      // If this was a draft, remove it from draft map (now persisted)
+      if (isDraft) {
+        set((state) => {
+          const newDrafts = new Map(state.draftThreads)
+          newDrafts.delete(threadId)
+          return { draftThreads: newDrafts }
+        })
       }
 
       // Update in state
@@ -395,5 +395,12 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
    */
   setCurrentSystemPrompt: (systemPrompt: string | null) => {
     set({ currentSystemPrompt: systemPrompt })
+  },
+
+  /**
+   * Check if a thread is a draft (not yet persisted to disk)
+   */
+  isDraftThread: (threadId: string) => {
+    return get().draftThreads.has(threadId)
   }
 }))

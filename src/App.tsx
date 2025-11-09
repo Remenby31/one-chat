@@ -199,27 +199,12 @@ function App() {
   // Load threads and current thread on mount
   useEffect(() => {
     const loadThreads = async () => {
-      // Load thread list
+      // Load thread list (for sidebar display)
       await threadStore.loadThreads()
 
-      // Load current thread ID
-      let currentThreadId: string | null = null
-      if (window.electronAPI) {
-        currentThreadId = await window.electronAPI.readConfig('currentThread.json')
-      } else {
-        currentThreadId = localStorage.getItem('currentThread')
-      }
-
-      if (currentThreadId) {
-        // Load messages for current thread
-        const { messages, systemPrompt } = await threadStore.switchThread(currentThreadId)
-        chatStore.loadMessages(messages)
-        // System prompt is already set in threadStore by switchThread
-      } else {
-        // Create a new thread if none exists with default system prompt
-        await threadStore.createThread(DEFAULT_SYSTEM_PROMPT)
-        chatStore.clearMessages()
-      }
+      // Always create a new thread on startup (fresh conversation experience)
+      await threadStore.createThread(DEFAULT_SYSTEM_PROMPT)
+      chatStore.clearMessages()
     }
 
     loadThreads()

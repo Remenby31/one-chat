@@ -27,8 +27,8 @@ const DEFAULT_CONFIG: MemoryConfig = {
   ignorePatterns: ['.obsidian', '.trash', '.git'],
   wikilinks: true,
   tagsFormat: 'both',
-  enforceStrictGraph: true,
-  rootNoteName: 'index.md'
+  enforceStrictGraph: false,
+  rootNoteName: 'root-memory.md'
 };
 
 class ObsidianMemoryServer {
@@ -78,18 +78,13 @@ class ObsidianMemoryServer {
         tools: [
         {
           name: 'memory_create',
-          description: 'Create a new note in the memory vault. IMPORTANT: Must specify linkedFrom OR include [[wiki-links]] in content to maintain graph connectivity. Notes without connections will be rejected.',
+          description: 'Create a new note in the memory vault. The note is created freely; consider adding [[wiki-links]] to reference other notes and build the knowledge graph.',
           inputSchema: {
             type: 'object',
             properties: {
               title: { type: 'string', description: 'Note title' },
-              content: { type: 'string', description: 'Note content in markdown. Use [[Note Title]] syntax to reference other notes and create automatic bidirectional links.' },
+              content: { type: 'string', description: 'Note content in markdown. Use [[Note Title]] syntax to reference other notes and create bidirectional links.' },
               folder: { type: 'string', description: 'Optional folder path' },
-              linkedFrom: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Optional: IDs or titles of existing notes that should link to this new note. If not specified, content must contain [[wiki-links]].'
-              },
               tags: {
                 type: 'array',
                 items: { type: 'string' },
@@ -120,16 +115,39 @@ class ObsidianMemoryServer {
         },
         {
           name: 'memory_update',
-          description: 'Update an existing note. IMPORTANT: Always use wikilink references [[Note Title]] when referencing other notes to maintain knowledge graph connections.',
+          description: 'Update an existing note. Use wikilink references [[Note Title]] to maintain knowledge graph connections.',
           inputSchema: {
             type: 'object',
             properties: {
               identifier: { type: 'string', description: 'Note ID, title, or path' },
-              content: { type: 'string', description: 'New content in markdown. Use [[Note Title]] syntax to reference other notes and create automatic bidirectional links.' },
+              content: { type: 'string', description: 'New content in markdown. Use [[Note Title]] syntax to reference other notes and create bidirectional links.' },
               tags: { type: 'array', items: { type: 'string' } },
               aliases: { type: 'array', items: { type: 'string' } }
             },
             required: ['identifier']
+          }
+        },
+        {
+          name: 'memory_upsert',
+          description: 'Update a note if it exists, or create it if it doesn\'t. Combines create and update logic into one operation. Consider adding [[wiki-links]] to build the knowledge graph.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              identifier: { type: 'string', description: 'Note ID, title, or path. Used as title when creating new notes.' },
+              content: { type: 'string', description: 'Note content in markdown. Use [[Note Title]] syntax to reference other notes and create bidirectional links.' },
+              folder: { type: 'string', description: 'Optional folder path (used when creating new notes)' },
+              tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional tags'
+              },
+              aliases: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional aliases for the note'
+              }
+            },
+            required: ['identifier', 'content']
           }
         },
         {
@@ -240,9 +258,15 @@ class ObsidianMemoryServer {
               {
                 tags: args.tags as string[] | undefined,
                 aliases: args.aliases as string[] | undefined
-              },
-              args.linkedFrom as string[] | string | undefined
+              }
             );
+
+            // Check if note has wikilinks for suggestion
+            const hasWikilinks = note.content.includes('[[') && note.content.includes(']]');
+            const suggestion = hasWikilinks
+              ? `Note created successfully with links to: ${note.links.join(', ')}`
+              : `Note created successfully. Consider adding [[root-memory]] or linking this note from another page to maintain graph connectivity.`;
+
             return {
               content: [
                 {
@@ -253,7 +277,8 @@ class ObsidianMemoryServer {
                       id: note.id,
                       title: note.title,
                       path: note.path
-                    }
+                    },
+                    reminder: suggestion
                   }, null, 2)
                 }
               ]
@@ -299,7 +324,7 @@ class ObsidianMemoryServer {
               args.identifier as string,
               updates
             );
-            
+
             if (!note) {
               throw new McpError(
                 ErrorCode.InvalidRequest,
@@ -318,6 +343,42 @@ class ObsidianMemoryServer {
                       title: note.title,
                       path: note.path
                     }
+                  }, null, 2)
+                }
+              ]
+            };
+          }
+
+          case 'memory_upsert': {
+            const frontmatter: any = {};
+            if (args.tags) frontmatter.tags = args.tags;
+            if (args.aliases) frontmatter.aliases = args.aliases;
+
+            const note = await this.memoryManager.upsertNote(
+              args.identifier as string,
+              args.content as string,
+              Object.keys(frontmatter).length > 0 ? frontmatter : undefined,
+              args.folder as string | undefined
+            );
+
+            // Check if note has wikilinks for suggestion
+            const hasWikilinks = note.content.includes('[[') && note.content.includes(']]');
+            const suggestion = hasWikilinks
+              ? `Note upserted successfully with links to: ${note.links.join(', ')}`
+              : `Note upserted successfully. Consider adding [[root-memory]] or linking this note from another page to maintain graph connectivity.`;
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    success: true,
+                    note: {
+                      id: note.id,
+                      title: note.title,
+                      path: note.path
+                    },
+                    reminder: suggestion
                   }, null, 2)
                 }
               ]

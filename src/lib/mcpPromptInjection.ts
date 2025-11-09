@@ -179,13 +179,16 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
     const call = toolCalls.find(t => t.toolCallId === toolCallId);
     const result = toolResults.find(t => t.toolCallId === toolCallId);
 
+    let toolCallAdded = false;
+
     if (call) {
-      // Try to parse tool call content as JSON for structured format
+      // Parse tool call content as JSON for structured format
       let toolCallData: any = null;
       try {
         toolCallData = JSON.parse(call.content);
-      } catch {
-        // If not JSON, it's plain text - ignore for now
+      } catch (error) {
+        console.error(`[mcpPromptInjection] Failed to parse tool_call ${toolCallId}, skipping:`, error);
+        continue; // Skip this pair entirely
       }
 
       if (toolCallData && toolCallData.type === 'tool_call') {
@@ -202,16 +205,19 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
             }
           }]
         });
+        toolCallAdded = true;
       } else {
-        // Fallback: plain text content (legacy format)
-        messages.push({
-          role: 'assistant',
-          content: call.content,
-        });
+        // Invalid format - skip entirely (no fallback)
+        console.error(`[mcpPromptInjection] Invalid tool_call format for ${toolCallId}, skipping`);
+        continue;
       }
+    } else {
+      console.error(`[mcpPromptInjection] Tool result without call: ${toolCallId}, skipping`);
+      continue;
     }
 
-    if (result) {
+    // Only add tool result if tool_calls was successfully added
+    if (result && toolCallAdded) {
       messages.push({
         role: 'tool',
         content: result.content,

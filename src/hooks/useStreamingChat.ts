@@ -441,19 +441,28 @@ export function useStreamingChat(
         }
 
         // Execute tool calls
-        // Add assistant message with tool calls to conversation
-        conversationMessages.push({
-          role: 'assistant',
+        // Add assistant message with tool calls to conversation AND store (so it persists for next turn)
+        const assistantMessageWithToolCalls = {
+          role: 'assistant' as const,
           content: fullText || '',
           tool_calls: toolCalls.map(tc => ({
             id: tc.id,
-            type: 'function',
+            type: 'function' as const,
             function: {
               name: tc.function.name,
               arguments: tc.function.arguments
             }
           }))
-        } as any)
+        };
+
+        conversationMessages.push(assistantMessageWithToolCalls as any)
+
+        // ✅ Add the assistant message with tool_calls to store FIRST (critical for next turn)
+        store.addMessage({
+          role: 'assistant',
+          content: assistantMessageWithToolCalls.content,
+          tool_call_requests: assistantMessageWithToolCalls.tool_calls
+        })
 
         // Execute each tool call
         const toolResults = []
@@ -510,7 +519,7 @@ export function useStreamingChat(
         // Add tool results to conversation
         conversationMessages.push(...toolResults as any)
 
-        // Save tool result messages to store
+        // ✅ Add tool result messages to store AFTER assistant message (maintains proper order)
         for (const toolResult of toolResults) {
           store.addMessage({
             role: 'tool',
