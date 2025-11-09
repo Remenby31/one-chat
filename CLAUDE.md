@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Jarvis is an Electron-based desktop chat application that integrates AI models via OpenAI-compatible APIs. It uses React with TypeScript for the UI and the assistant-ui library for chat interface components.
+Jarvis is an Electron-based desktop chat application that integrates AI models via OpenAI-compatible APIs. It uses React with TypeScript for the UI, Zustand for state management, and supports MCP (Model Context Protocol) servers for tool integration.
 
 ## Key Commands
 
@@ -37,41 +37,68 @@ Jarvis is an Electron-based desktop chat application that integrates AI models v
 ### Frontend Architecture
 
 **State Management & Runtime**:
-- `src/App.tsx` - Main app component, manages model configuration state, provides AssistantRuntimeProvider
+- `src/App.tsx` - Main app component with global state management:
   - Loads configuration from JSON files (Electron) or localStorage (dev/web mode)
-  - Manages current model selection and model list state
-  - Handles model changes and updates via callbacks
-- `src/lib/useModelRuntime.ts` - Creates custom AI runtime that:
-  - Intercepts chat requests via AssistantChatTransport
-  - Fetches API key from storage using model's apiKeyId reference
-  - Resolves environment variables if API key format is `$ENV_VAR_NAME`
-  - Routes requests through Electron IPC to bypass CSP restrictions
-  - Converts assistant-ui message format to OpenAI format
-  - Handles streaming responses as Server-Sent Events (SSE)
-  - Provides detailed error messages with emojis for different error types (401, 404, 429, 500, etc.)
-  - Falls back to direct fetch in browser/dev mode without Electron
-- `src/types/model.ts` - Defines ModelConfig interface: `{ id, name, apiKeyId, model, temperature?, maxTokens? }`
+  - Manages model, API key, and MCP server state
+  - Provides error handling via toast notifications (errorToast with emoji categorization)
+  - Sets up config file watchers for real-time sync across windows
+- `src/hooks/useStreamingChat.ts` - Chat hook for streaming messages:
+  - Manages chat state via `chatStore` (Zustand)
+  - Fetches API key from storage and resolves environment variables (`$ENV_VAR_NAME` format)
+  - Sends requests directly to OpenAI-compatible `/chat/completions` endpoint via native fetch
+  - Streams responses as SSE (Server-Sent Events) with ReadableStream + TextDecoder
+  - Integrates MCP tools via `getInjectedMessages()` for tool injection
+  - Implements multi-turn tool execution with MAX_TURNS=10 loop limit
+  - Auto-saves messages to thread store
+  - Provides detailed error messages categorized by HTTP status (401, 404, 429, 500+)
+- `src/stores/chatStore.ts` - Zustand store for chat state:
+  - Manages messages, streaming state, abort controller
+  - Tracks tool calls and execution
+  - Handles message attachments
+- `src/stores/threadStore.ts` - Zustand store for thread persistence:
+  - Manages conversation threads (thread list, current thread)
+  - Persists messages to file system
+- `src/types/model.ts` - Defines ModelConfig interface: `{ id, name, apiKeyId, model, temperature?, maxTokens?, systemPrompt? }`
 - `src/types/apiKey.ts` - Defines ApiKey interface: `{ id, name, key, baseURL }`
   - Provider detection from API key prefix (OpenAI, Anthropic, Google, Cohere, Mistral, etc.)
   - Provider icon resolution from baseURL
   - Auto-detection and auto-fill of baseURL based on API key pattern
 
 **Key Components**:
-- `src/components/Settings.tsx` - Settings panel with tabbed interface (Models, Endpoints, Appearance, Backup & Restore):
-  - Sidebar navigation with 4 tabs
+- `src/components/Settings.tsx` - Settings panel with tabbed interface (Models, Endpoints, Appearance, MCP Servers, Backup & Restore):
+  - Sidebar navigation with 5 tabs
   - **Models tab**: List of configured models with selection state, displays associated endpoint name
   - **Endpoints tab**: List of API keys/endpoints with provider icons (auto-detected from baseURL)
   - **Appearance tab**: Theme selection with visual cards (light/dark/system)
+  - **MCP Servers tab**: Connect and manage MCP servers, view tools and capabilities, stream server logs
   - **Backup & Restore tab**: Export/import configuration as JSON
   - Dialog-based forms for adding new models and endpoints
   - Smart model selection: Combobox with searchable list fetched from API `/models` endpoint
   - Environment variable picker with `$` icon (shows API-related env vars)
   - Auto-detection of provider and baseURL when entering API key
   - Prevents deletion of endpoints in use by models
+- `src/components/chat/ChatThread.tsx` - Main chat thread display:
+  - Displays message list with real-time streaming
+  - Integrates composer for message input
+  - Handles MCP tool display and execution
+- `src/components/chat/MessageList.tsx` - Scrollable message list
+- `src/components/chat/Composer.tsx` - Message input area with file attachment support
+- `src/components/chat/UserMessage.tsx` - User message display
+- `src/components/chat/AssistantMessage.tsx` - Assistant message with markdown and tool calls
+- `src/components/chat/MarkdownContent.tsx` - Markdown rendering for messages
+- `src/components/chat/CodeHighlighter.tsx` - Syntax highlighting for code blocks
 - `src/components/ModelSelector.tsx` - Dropdown for selecting active model in chat header
-- `src/components/Sidebar.tsx` - Navigation sidebar
-- `src/components/assistant-ui/thread.tsx` - Chat thread display using assistant-ui primitives
+- `src/components/Sidebar.tsx` - Navigation sidebar with thread list
+- `src/components/ThreadListPanel.tsx` - Thread list for conversation management
 - `src/components/ThemeProvider.tsx` - Theme management (light/dark/system)
+
+**MCP Components**:
+- `src/components/mcp/MCPServerCard.tsx` - Display MCP server status and info
+- `src/components/mcp/MCPDialog.tsx` - Add/configure MCP server dialog
+- `src/components/mcp/MCPToolsList.tsx` - Display available tools from MCP server
+- `src/components/mcp/MCPPromptsList.tsx` - Display available prompts from MCP server
+- `src/components/mcp/MCPServerLogs.tsx` - Real-time MCP server logs
+- `src/components/mcp/MCPButton.tsx` - Button for triggering MCP tool execution
 
 **Custom UI Components**:
 - `src/components/ui/form-field.tsx` - Reusable form field component with label and slim input (h-8)
@@ -79,65 +106,90 @@ Jarvis is an Electron-based desktop chat application that integrates AI models v
 - Uses shadcn/ui components (button, dialog, input, label, tabs, select, dropdown-menu) in `src/components/ui/`
 - Tailwind CSS for styling with v4 syntax
 - Radix UI primitives for accessible components
-- assistant-ui library for chat interface patterns
 
 ### Data Flow
 
 1. **Configuration Setup**:
    - User adds API key/endpoint in Settings → stored in JSON files as ApiKey[] (includes baseURL)
-   - User adds model in Settings → stored as ModelConfig[] (references endpoint by apiKeyId)
+   - User adds model in Settings → stored as ModelConfig[] (references endpoint by apiKeyId, includes systemPrompt)
    - Selected model stored in `selectedModel.json`
+   - MCP servers configured and stored in `mcpServers.json` with OAuth tokens
 
 2. **App Initialization**:
-   - App.tsx loads models from storage (Electron: JSON files, Dev: localStorage)
+   - App.tsx loads models, API keys, and MCP servers from storage (Electron: JSON files, Dev: localStorage)
    - Loads selected model and sets as active
-   - Passes current model to useModelRuntime hook
+   - Initializes MCP servers via MCPProcessManager
+   - Sets up config file watchers for real-time sync
 
-3. **Runtime Creation**:
-   - useModelRuntime creates custom AssistantChatTransport
-   - Transport intercepts all chat requests from assistant-ui
+3. **Thread Management**:
+   - Threads are stored as individual folders in `conversations/` directory
+   - Each thread has `messages.json` containing message history
+   - ThreadStore manages current thread and thread list
+   - Messages auto-saved to thread files after each response
 
 4. **Message Sending Flow**:
-   - User sends message via Thread component
-   - Runtime intercepts request, fetches ApiKey from storage using model's apiKeyId
-   - Resolves environment variables if API key is in `$ENV_VAR_NAME` format
-   - Converts assistant-ui message format (with parts) to OpenAI format (with content)
-   - **In Electron**: Routes through IPC (`api:chat-completion`) to bypass CSP
-   - **In browser/dev**: Direct fetch to `${baseURL}/chat/completions`
-   - Streams response back as SSE (Server-Sent Events)
+   - User sends message via Composer component
+   - Message added to chatStore and thread
+   - `useStreamingChat` hook fetches active model and its API key
+   - Resolves environment variables if API key in `$ENV_VAR_NAME` format
+   - System prompt from model config included in messages
+   - MCP tools fetched from connected servers (via `getInjectedMessages()`)
+   - Sends request directly to OpenAI-compatible `${baseURL}/chat/completions` endpoint
+   - Streams response using native fetch + ReadableStream + TextDecoder
 
-5. **Response Handling**:
-   - SSE chunks processed and decoded
-   - Streaming response passed to assistant-ui Thread component
-   - Messages displayed in real-time with markdown rendering
+5. **Tool Execution Loop** (if response includes tool calls):
+   - Tool calls extracted from assistant response
+   - Executed via MCP servers (limited to MAX_TURNS=10 to prevent infinite loops)
+   - Tool results included in next request to model
+   - Loop continues until model responds without tool calls
+
+6. **Response Handling**:
+   - SSE chunks decoded and parsed
+   - Streaming tokens accumulated and displayed in real-time
+   - Final message saved to thread store
+   - Thread file updated with new message
+   - Messages displayed with markdown rendering and syntax highlighting
 
 ### IPC Communication (Electron ↔ Renderer)
 
 The app uses Electron IPC for secure communication between main and renderer processes:
 
-**Preload API** (`electron/preload.ts` exposes via `window.electronAPI`):
-- `readConfig(filename)` - Read JSON config file from user data directory
-- `writeConfig(filename, data)` - Write JSON config file to user data directory
-- `exportConfig()` - Export configuration with file picker dialog
-- `importConfig()` - Import configuration with file picker dialog
-- `resolveEnvVar(value)` - Resolve `$ENV_VAR_NAME` to actual value from process.env
-- `getEnvVars()` - List API-related environment variables (OPENAI, ANTHROPIC, API, KEY, etc.)
-- `fetchModels(baseURL, apiKey)` - Fetch available models from `/models` endpoint
-- `chatCompletion(baseURL, apiKey, body)` - Proxy chat completion request to bypass CSP
-
 **Main Process Handlers** (`electron/main.ts`):
+
+**App/System**:
 - `app:get-version` - Get Electron app version
-- `config:read` / `config:write` - Read/write JSON files in `userData` directory
-- `config:export` / `config:import` - File dialogs for backup/restore
-- `env:resolve` - Resolve environment variables (supports `$` prefix)
+- `app:open-external` - Open URL in system browser (used for OAuth)
+
+**Configuration**:
+- `config:read` - Read JSON config file from `userData` directory
+- `config:write` - Write JSON config file to `userData` directory (with concurrent write queue)
+- `config:export` - Export configuration with file picker dialog
+- `config:import` - Import configuration with file picker dialog
+
+**Environment Variables**:
+- `env:resolve` - Resolve `$ENV_VAR_NAME` to actual value from process.env
 - `env:list` - Filter and return API-related environment variables
-- `api:fetch-models` - Fetch from `/models` endpoint with auth
-- `api:chat-completion` - Stream chat completion responses as SSE
+
+**Thread Management**:
+- `thread:list` - List all conversation threads
+- `thread:delete` - Delete a thread folder
+
+**MCP Server Management**:
+- `mcp:start-server` - Start MCP server process with stdio transport
+- `mcp:stop-server` - Stop MCP server process
+- `mcp:list-tools` - List available tools from MCP server
+- `mcp:get-capabilities` - Get MCP server capabilities (tools, prompts, resources)
+- `mcp:call-tool` - Execute MCP tool with arguments
+- `mcp:list-prompts` - List available prompts from MCP server
+- `mcp:get-prompt` - Get MCP prompt by name
+- `mcp:get-logs` - Get MCP server logs (recent entries)
+- `mcp:clear-logs` - Clear MCP server logs
+- `mcp:import-claude-desktop` - Import MCP server config from Claude Desktop
 
 ### Storage & Configuration
 
 **API Keys/Endpoints**:
-- Stored centrally in `apiKeys.json` (in `AppData/Roaming/Jarvis` on Windows)
+- Stored in `apiKeys.json` (in `AppData/Roaming/Jarvis` on Windows)
 - Structure: `ApiKey[] = [{ id, name, key, baseURL }]`
 - Key can be literal string or environment variable reference (`$ENV_VAR_NAME`)
 - Environment variables resolved at runtime via Electron IPC
@@ -145,21 +197,52 @@ The app uses Electron IPC for secure communication between main and renderer pro
 
 **Models**:
 - Stored in `models.json`
-- Structure: `ModelConfig[] = [{ id, name, apiKeyId, model, temperature?, maxTokens? }]`
+- Structure: `ModelConfig[] = [{ id, name, apiKeyId, model, temperature?, maxTokens?, systemPrompt? }]`
 - References endpoints by `apiKeyId` for reusability
 - Selected model ID stored in `selectedModel.json`
+
+**Threads/Conversations**:
+- Each thread is a folder in `conversations/` directory
+- Thread folder contains `messages.json` with full conversation history
+- Thread folder name is the thread ID
+- ThreadStore manages thread list and current thread state
+
+**MCP Servers**:
+- Stored in `mcpServers.json`
+- Includes server configuration, OAuth tokens, and credentials
+- Access tokens auto-refreshed when expired (5-minute buffer)
+- Server processes managed by MCPProcessManager with lifecycle tracking
+- Logs streamed in real-time via IPC to UI
 
 **Fallback**:
 - In browser/dev mode without Electron, falls back to localStorage
 - Same data structure, just different storage mechanism
 
-### MCP Servers
+### MCP System Architecture
 
-The project has MCP servers configured in `.mcp.json`:
+The app provides full MCP (Model Context Protocol) server support with automatic lifecycle management:
+
+**MCP Process Management**:
+- `src/lib/mcpProcessManager.ts` - Manages MCP server processes:
+  - Launches servers with stdio transport
+  - Tracks server state (stopped, initializing, running, error)
+  - Handles graceful shutdown and cleanup
+  - Recovers from server crashes
+- `src/lib/mcpStateMachine.ts` - State machine for MCP server connections
+- Tool injection via `getInjectedMessages()` - Injects available MCP tools into chat context
+
+**Built-in MCP Servers**:
+- `src/lib/builtInServers.ts` - Auto-enables built-in MCP servers:
+  - Obsidian Memory MCP server (mcp-servers/built-in/obsidian-memory/)
+  - Additional built-in servers can be configured here
+
+**MCP Configuration** (`.mcp.json`):
 - `shadcn` - For shadcn/ui component management
-- `assistant-ui` - For assistant-ui documentation and examples
+- `electron` - Local MCP server for Jarvis-specific tools
 
-These servers provide tools for component discovery and integration.
+**MCP OAuth Workflow**:
+- Automated OAuth discovery and token management (see next section)
+- Tokens persisted and auto-refreshed in `mcpServers.json`
 
 ### MCP OAuth Workflow
 
@@ -199,7 +282,8 @@ MCP servers like Supabase require OAuth 2.1 authentication. The app implements a
 ## Important Notes
 
 ### Development & Build
-- **Development port**: 5173 (standard Vite port - see `electron/main.ts:81`)
+- **Development port**: 5173 (standard Vite port - see `electron/main.ts:539`)
+- **File watching**: Config files watched for changes with automatic reload across all windows
 - **Terminology**: UI uses "Endpoints" instead of "API Keys" for user-facing labels
 - **Do not launch app** - The user will handle launching and testing
 
@@ -208,11 +292,13 @@ MCP servers like Supabase require OAuth 2.1 authentication. The app implements a
   - `models.json` - Model configurations
   - `apiKeys.json` - API keys/endpoints (NOT encrypted - use env vars for production)
   - `selectedModel.json` - Currently selected model ID
+  - `mcpServers.json` - MCP server configs and OAuth tokens
+  - `conversations/` - Thread folders with message history
 - **Environment Variables**:
   - Support for `$ENV_VAR_NAME` format in API keys
   - Visual picker in Settings shows API-related env vars (filtered by prefix)
   - Resolved at runtime via Electron IPC for security
-- **CSP Bypass**: API requests routed through Electron IPC to avoid CSP restrictions in renderer
+- **Config File Watching**: File system watcher monitors config changes and broadcasts updates across all windows
 - **Fallback**: localStorage used in browser/dev mode without Electron
 
 ### API Compatibility
