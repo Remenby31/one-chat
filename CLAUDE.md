@@ -132,10 +132,47 @@ Jarvis is an Electron-based desktop chat application that integrates AI models v
    - Message added to chatStore and thread
    - `useStreamingChat` hook fetches active model and its API key
    - Resolves environment variables if API key in `$ENV_VAR_NAME` format
-   - System prompt from model config included in messages
-   - MCP tools fetched from connected servers (via `getInjectedMessages()`)
+   - Fetches and injects conventional prompts from MCP servers (via `getInjectedMessages()`)
+   - Merges thread system prompt with MCP injected prompts
+   - MCP tools fetched from connected servers
    - Sends request directly to OpenAI-compatible `${baseURL}/chat/completions` endpoint
    - Streams response using native fetch + ReadableStream + TextDecoder
+
+### Prompt Injection System
+
+The app implements a sophisticated **MCP Conventional Prompts Auto-Injection System** that automatically injects prompts from connected MCP servers into conversations:
+
+**Conventional Prompt Types** (case-insensitive detection):
+- `system_prompt` - System instructions (role: system), concatenated with tool_instructions
+- `tool_instructions` - Tool usage guidelines (role: system), merged with system_prompt
+- `user_prompt` - User context messages (role: user), multiple allowed, order preserved
+- `assistant_prompt` - Response prefill/examples (role: assistant), order preserved
+- `tool_call:*` (e.g., `tool_call:memory_index`) - Simulated tool calls (role: assistant) to demonstrate tool patterns
+- `tool_result:*` or `tool_answer:*` - Simulated tool results (role: tool) paired with tool_call messages
+
+**Injection Process** (`src/lib/mcpPromptInjection.ts` + `src/hooks/useStreamingChat.ts`):
+1. When user sends message, system fetches all prompts from connected (RUNNING) MCP servers
+2. Filters prompts by conventional names (ignores others)
+3. Detects prompt type from name pattern
+4. Organizes messages in OpenAI-compatible order: system → user_prompt → tool_call/result pairs → assistant_prompt
+5. Merges any MCP system prompts with thread's system prompt
+6. Prepends injected messages to conversation history
+7. Sends final message array to API: `[injected prompts] + [conversation history]`
+
+**System Prompt Hierarchy** (first wins):
+1. **Thread System Prompt** - Stored per thread in `conversations/thread_*.json`, merged with MCP system prompts
+2. **MCP System Prompts** - Auto-fetched from connected servers, concatenated
+3. **Default System Prompt** - Used when creating new threads, provides baseline instructions
+
+Note: ModelConfig's `systemPrompt` field is stored but not actively used in chat flow (preserved for future per-model customization).
+
+**Example**: Obsidian Memory MCP Server injects `tool_call:memory_index` (showing how to call memory) + `tool_result:memory_index` (showing result format) to teach the LLM to use memory tools proactively.
+
+**Key Files**:
+- `src/lib/mcpPromptInjection.ts` - Prompt detection and organization logic
+- `src/hooks/useStreamingChat.ts` (lines 190-210) - Integration point, fetches and injects prompts on each message
+- `src/lib/defaultSystemPrompt.ts` - Default system prompt for all threads
+- `src/components/mcp-details/MCPPromptsList.tsx` - UI for browsing/previewing available prompts
 
 5. **Tool Execution Loop** (if response includes tool calls):
    - Tool calls extracted from assistant response
@@ -286,6 +323,7 @@ MCP servers like Supabase require OAuth 2.1 authentication. The app implements a
 - **File watching**: Config files watched for changes with automatic reload across all windows
 - **Terminology**: UI uses "Endpoints" instead of "API Keys" for user-facing labels
 - **Do not launch app** - The user will handle launching and testing
+- **No legacy or fallback code** - Only clean code, good practices of coding
 
 ### Security & Storage
 - **Storage location**: `AppData/Roaming/Jarvis` on Windows, `~/Library/Application Support/Jarvis` on macOS
