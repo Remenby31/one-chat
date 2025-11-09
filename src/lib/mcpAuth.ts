@@ -174,8 +174,6 @@ export async function startOAuthFlow(server: MCPServer): Promise<void> {
   // client_id is optional for OAuth 2.1 public clients with PKCE
   // Some MCP servers may not require it, or use a default public client_id
 
-  console.log('[OAuth] Starting OAuth flow for server:', server.name)
-
   // Transition to AUTHENTICATING state
   const machine = stateMachineManager.getMachine(server.id, server.status)
   await machine.transition('AUTHENTICATE', {
@@ -231,8 +229,6 @@ export async function startOAuthFlow(server: MCPServer): Promise<void> {
 export async function handleOAuthCallback(
   callbackUrl: string
 ): Promise<{ serverId: string; tokens: any; oauthConfig: import('@/types/mcp').MCPOAuthConfig }> {
-  console.log('[OAuth] Handling callback:', callbackUrl)
-
   const url = new URL(callbackUrl)
   const code = url.searchParams.get('code')
   const state = url.searchParams.get('state')
@@ -264,8 +260,6 @@ export async function handleOAuthCallback(
     console.error('[OAuth] Missing code or state in callback')
     throw new Error('Invalid OAuth callback: missing code or state')
   }
-
-  console.log('[OAuth] Callback parameters:', { code: code.substring(0, 10) + '...', state })
 
   // Retrieve and validate OAuth state
   const oauthState = getOAuthState(state)
@@ -299,8 +293,6 @@ export async function handleOAuthCallback(
   if (!oauthConfig.tokenUrl) {
     throw new Error('OAuth configuration missing: tokenUrl is required')
   }
-
-  console.log('[OAuth] Exchanging code for tokens...')
 
   // Exchange authorization code for tokens
   try {
@@ -346,11 +338,6 @@ export async function handleOAuthCallback(
     }
 
     const tokens = await tokenResponse.json()
-    console.log('[OAuth] Tokens received:', {
-      hasAccessToken: !!tokens.access_token,
-      hasRefreshToken: !!tokens.refresh_token,
-      expiresIn: tokens.expires_in
-    })
 
     // Update OAuth config with tokens
     oauthConfig.accessToken = tokens.access_token
@@ -389,10 +376,8 @@ export async function handleOAuthCallback(
         } else {
           localStorage.setItem('mcpServers', JSON.stringify(mcpServers))
         }
-        console.log('[OAuth] Tokens saved to server config')
       }
     } else {
-      console.log('[OAuth] Server not yet saved, tokens stored in state')
       // Update the state with tokens for the dialog to retrieve
       if (oauthState.oauthConfig) {
         oauthState.oauthConfig.accessToken = tokens.access_token
@@ -429,8 +414,6 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
   if (!server.oauthConfig.tokenUrl) {
     throw new Error('OAuth configuration missing: tokenUrl is required')
   }
-
-  console.log('[OAuth] Refreshing token for server:', server.name)
 
   // Transition to TOKEN_REFRESHING if not already there
   const machine = stateMachineManager.getMachine(server.id, server.status)
@@ -479,14 +462,11 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
 
       // Special handling for 404 - usually means refresh token doesn't exist or expired
       if (tokenResponse.status === 404) {
-        console.error('[OAuth] Refresh token not found (404) - likely expired or invalidated')
-        console.error('[OAuth] Re-authentication required')
         throw new Error('Refresh token expired or invalid. Please re-authenticate.')
       }
 
       // Special handling for 401 - invalid credentials
       if (tokenResponse.status === 401) {
-        console.error('[OAuth] Invalid credentials (401) - client_id or client_secret may be wrong')
         throw new Error('OAuth client authentication failed. Please check credentials.')
       }
 
@@ -494,7 +474,6 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
     }
 
     const tokens = await tokenResponse.json()
-    console.log('[OAuth] Token refreshed successfully')
 
     // Update tokens
     server.oauthConfig.accessToken = tokens.access_token
@@ -539,7 +518,6 @@ export async function refreshOAuthToken(server: MCPServer): Promise<MCPServer> {
         } else {
           localStorage.setItem('mcpServers', JSON.stringify(mcpServers))
         }
-        console.log('[OAuth] Refreshed tokens persisted to storage')
       }
     } catch (persistError) {
       console.error('[OAuth] Failed to persist refreshed tokens:', persistError)
@@ -595,10 +573,8 @@ export async function ensureValidToken(server: MCPServer): Promise<MCPServer> {
   const timeUntilExpiry = server.oauthConfig.tokenExpiresAt - Date.now()
 
   if (timeUntilExpiry < FIVE_MINUTES) {
-    console.log('[OAuth] Access token expired or expiring soon, refreshing...')
     return await refreshOAuthToken(server)
   }
 
-  console.log('[OAuth] Access token is valid, no refresh needed')
   return server
 }

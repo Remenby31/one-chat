@@ -78,15 +78,10 @@ export const BUILT_IN_SERVERS: BuiltInServerDefinition[] = [
 export async function initializeBuiltInServers(
   existingServers: MCPServer[]
 ): Promise<MCPServer[]> {
-  console.log('[builtInServers] 🚀 Starting initialization with', existingServers.length, 'existing servers')
-  console.log('[builtInServers] Built-in servers to initialize:', BUILT_IN_SERVERS.length)
-
   // Get app root path via IPC (if available)
   let appRoot = ''
   if (window.electronAPI?.getAppRoot) {
-    console.log('[builtInServers] Fetching app root via Electron API...')
     appRoot = await window.electronAPI.getAppRoot()
-    console.log('[builtInServers] ✅ App root obtained:', appRoot)
   } else {
     // Fallback for development - use current origin
     appRoot = window.location.origin
@@ -105,13 +100,10 @@ export async function initializeBuiltInServers(
 
   // Process each built-in server
   for (const definition of BUILT_IN_SERVERS) {
-    console.log(`[builtInServers] Processing "${definition.name}" (${definition.id})...`)
-
     const existingServer = servers.find(s => s.id === definition.id)
 
     // Construct absolute path to server entry point
     const serverPath = appRoot + '/' + definition.relativeServerPath
-    console.log(`[builtInServers]   → Server path: ${serverPath}`)
 
     const builtInConfig: Omit<MCPServer, 'status' | 'stateMetadata'> = {
       id: definition.id,
@@ -130,7 +122,6 @@ export async function initializeBuiltInServers(
 
     if (existingServer) {
       // Server already exists - update its configuration but preserve user settings
-      console.log(`[builtInServers]   → Server already exists, updating configuration...`)
       const index = servers.indexOf(existingServer)
 
       servers[index] = {
@@ -147,19 +138,15 @@ export async function initializeBuiltInServers(
         // Ensure isBuiltIn flag is set
         isBuiltIn: true,
       }
-      console.log(`[builtInServers]   ✅ Updated existing server`)
     } else {
       // New built-in server - add it with default state
-      console.log(`[builtInServers]   → New server, adding to list...`)
       servers.push({
         ...builtInConfig,
         status: 'IDLE',
       })
-      console.log(`[builtInServers]   ✅ Added new server`)
     }
   }
 
-  console.log('[builtInServers] ✅ Initialization complete. Total servers:', servers.length)
   return servers
 }
 

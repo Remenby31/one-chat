@@ -166,16 +166,11 @@ export class MCPStateMachine {
       return false
     }
 
-    console.log(
-      `[StateMachine:${this.serverId}] Attempting transition: ${this.currentState} --[${event}]--> ${targetState}`
-    )
-
     // Run before-transition hooks
     for (const hook of this.beforeTransitionHooks) {
       try {
         const shouldContinue = await hook(this.currentState, targetState, event)
         if (!shouldContinue) {
-          console.log(`[StateMachine:${this.serverId}] Transition cancelled by before-hook`)
           return false
         }
       } catch (error) {
@@ -211,10 +206,6 @@ export class MCPStateMachine {
       this.history = this.history.slice(-this.maxHistorySize)
     }
 
-    console.log(
-      `[StateMachine:${this.serverId}] Transition complete: ${fromState} --> ${targetState}`
-    )
-
     // Notify listeners
     for (const listener of this.stateChangeListeners) {
       try {
@@ -244,10 +235,6 @@ export class MCPStateMachine {
     state: MCPServerState,
     metadata?: Partial<MCPStateMetadata>
   ): void {
-    console.warn(
-      `[StateMachine:${this.serverId}] Force setting state: ${this.currentState} --> ${state}`
-    )
-
     this.previousState = this.currentState
     this.currentState = state
     this.metadata = {

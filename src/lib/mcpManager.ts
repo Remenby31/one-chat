@@ -16,24 +16,17 @@ export class MCPManager {
     // Listen for process exit events from Electron
     if (window.electronAPI?.onMcpServerExited) {
       this.exitListenerCleanup = window.electronAPI.onMcpServerExited(async ({ serverId, exitCode }) => {
-        console.log(`[MCPManager] 🔴 Process exited: server=${serverId}, exitCode=${exitCode}`)
-
         const machine = stateMachineManager.getMachine(serverId)
         const currentState = machine.getState()
-        console.log(`[MCPManager] Current state: ${currentState}`)
 
         // Determine target state based on exit code
         const targetState = (exitCode === 0 || exitCode === null) ? 'STOPPED' : 'RUNTIME_ERROR'
 
         // If already in the target state, just notify (ensures persistence)
         if (currentState === targetState) {
-          console.log(`[MCPManager] Already in target state ${targetState}, notifying for persistence`)
           this.notifyStatusChange(serverId, currentState)
           return
         }
-
-        // Perform appropriate transition based on current state and target
-        console.log(`[MCPManager] Transitioning from ${currentState} to ${targetState}`)
 
         try {
           if (exitCode === 0 || exitCode === null) {
@@ -76,7 +69,6 @@ export class MCPManager {
             })
           }
 
-          console.log(`[MCPManager] ✅ Transition complete: ${currentState} → ${machine.getState()}`)
           this.notifyStatusChange(serverId, machine.getState())
         } catch (error) {
           console.error(`[MCPManager] ❌ Transition failed:`, error)
@@ -153,7 +145,6 @@ export class MCPManager {
     // Skip if already running or starting (handles React StrictMode double-mount in dev)
     const currentState = machine.getState()
     if (currentState === 'RUNNING' || currentState === 'STARTING' || currentState === 'VALIDATING') {
-      console.log('[MCPManager] Server already running or starting, skipping start:', server.name, 'state:', currentState)
       return
     }
 
@@ -163,7 +154,6 @@ export class MCPManager {
 
       // VALIDATING state - check authentication
       if (server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken) {
-        console.log('[MCPManager] OAuth authentication required for', server.name)
         await machine.transition('AUTH_FAILURE', {
           errorMessage: 'Authentication required. Please authenticate this server first.',
           userMessage: 'Click the Authenticate button to authorize access.'
@@ -173,7 +163,6 @@ export class MCPManager {
 
       // If OAuth is required, ensure we have a valid token
       if (server.requiresAuth && server.authType === 'oauth') {
-        console.log('[MCPManager] Ensuring valid OAuth token for', server.name)
         try {
           server = await ensureValidToken(server)
           // Check if token was refreshed
@@ -216,7 +205,6 @@ export class MCPManager {
             TOKEN: server.authToken
           }
         }
-        console.log('[MCPManager] Injected auth token into environment')
       }
 
       // Transition to STARTING
@@ -262,12 +250,9 @@ export class MCPManager {
     const machine = stateMachineManager.getMachine(serverId)
     const currentState = machine.getState()
 
-    console.log(`[MCPManager] 🛑 stopServer called: server=${serverId}, state=${currentState}`)
-
     try {
       // If already stopped/idle, no need to do anything
       if (currentState === 'IDLE' || currentState === 'STOPPED') {
-        console.log(`[MCPManager] Server ${serverId} already stopped (state: ${currentState})`)
         this.notifyStatusChange(serverId, currentState)
         return
       }
@@ -285,15 +270,12 @@ export class MCPManager {
         return
       }
 
-      console.log(`[MCPManager] Transitioned to ${machine.getState()}, calling backend to kill process`)
-
       // Only call backend if server might actually be running
       const targetState = machine.getState()
       const shouldCallBackend = targetState !== 'IDLE' && targetState !== 'STOPPED'
 
       if (shouldCallBackend) {
         const result = await window.electronAPI.mcpStopServer(serverId)
-        console.log(`[MCPManager] Backend mcpStopServer result:`, result)
 
         if (!result.success && result.error && !result.error.includes('not running')) {
           // Only transition to error if it's a real error (not "already stopped")
@@ -304,8 +286,6 @@ export class MCPManager {
           })
           throw new Error(result.error)
         }
-
-        console.log(`[MCPManager] Process kill signal sent, waiting for exit event (5s timeout)`)
 
         // Wait for exit event with timeout
         const exitEventReceived = await this.waitForStateChange(
@@ -321,8 +301,6 @@ export class MCPManager {
             userMessage: 'Server stopped (timeout recovery)'
           })
         }
-      } else {
-        console.log(`[MCPManager] No backend call needed, already in final state: ${targetState}`)
       }
     } catch (error) {
       console.error(`[MCPManager] stopServer error:`, error)
@@ -335,7 +313,6 @@ export class MCPManager {
       throw error
     } finally {
       const finalState = machine.getState()
-      console.log(`[MCPManager] stopServer complete: final state=${finalState}`)
       this.notifyStatusChange(serverId, finalState)
     }
   }
@@ -479,7 +456,6 @@ export class MCPManager {
     try {
       // If server is not running, start it temporarily
       if (!wasRunning) {
-        console.log('[MCPManager] Starting server temporarily for test:', server.name)
         await this.startServer(server)
         shouldStop = true
 
@@ -488,7 +464,6 @@ export class MCPManager {
       }
 
       // Try to get server capabilities
-      console.log('[MCPManager] Fetching capabilities for:', server.name)
       const capabilities = await this.getServerCapabilities(server.id)
 
       // Count available features
@@ -567,7 +542,6 @@ export class MCPManager {
     } finally {
       // Stop the server if we started it temporarily
       if (shouldStop) {
-        console.log('[MCPManager] Stopping server after test:', server.name)
         try {
           await this.stopServer(server.id)
         } catch (error) {

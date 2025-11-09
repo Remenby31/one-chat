@@ -155,7 +155,6 @@ function App() {
     if (window.electronAPI?.onConfigChanged) {
       const handleConfigChanged = (filename: string, data: any) => {
         if (filename === 'mcpServers.json') {
-          console.log('[App] Config file changed, syncing state from file watcher')
           setMcpServers(data)
         }
       }

@@ -176,7 +176,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
 
     const handleConfigChanged = (filename: string, data: MCPServer[]) => {
       if (filename === 'mcpServers.json') {
-        console.log('[Settings] Config file changed, syncing state from file watcher')
         setMcpServers(data)
       }
     }
@@ -511,8 +510,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
     const server = mcpServers.find(s => s.id === id)
     if (!server) return
 
-    console.log(`[Settings] Toggling MCP server ${server.name} to ${enabled ? 'ON' : 'OFF'}`)
-
     const updatedServers = mcpServers.map(s =>
       s.id === id ? { ...s, enabled } : s
     )
@@ -525,7 +522,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
       } else {
         await mcpManager.stopServer(id)
       }
-      console.log(`[Settings] Successfully toggled MCP server ${server.name}`)
     } catch (error) {
       console.error(`[Settings] Failed to toggle MCP server ${server.name}:`, error)
       // Only revert on actual errors (not "already stopped" cases)
@@ -538,8 +534,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
           s.id === id ? { ...s, enabled: !enabled } : s
         )
         saveMcpServers(revertedServers)
-      } else {
-        console.log(`[Settings] Server was already in desired state, not reverting`)
       }
     }
   }
