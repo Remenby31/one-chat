@@ -82,7 +82,9 @@
       "Bash(del:*)",
       "Bash(npm uninstall:*)",
       "Bash(find:*)",
-      "Bash(test -f:*)"
+      "Bash(test -f:*)",
+      "Bash(timeout 5 bash:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

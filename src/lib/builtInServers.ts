@@ -70,13 +70,15 @@ export const BUILT_IN_SERVERS: BuiltInServerDefinition[] = [
  * This should be called on app startup to ensure all built-in servers are registered
  *
  * @param existingServers Current list of servers from storage
+ * @param userDataPath Optional path to user data directory (for vault and config storage)
  * @returns Updated list of servers with built-in servers added/updated
  *
  * Note: This function uses electronAPI to get the app root path, so it must
  * be called in a renderer process with access to the Electron API.
  */
 export async function initializeBuiltInServers(
-  existingServers: MCPServer[]
+  existingServers: MCPServer[],
+  userDataPath?: string
 ): Promise<MCPServer[]> {
   // Get app root path via IPC (if available)
   let appRoot = ''
@@ -105,6 +107,16 @@ export async function initializeBuiltInServers(
     // Construct absolute path to server entry point
     const serverPath = appRoot + '/' + definition.relativeServerPath
 
+    // Build environment variables for this server
+    const serverEnv = { ...definition.env }
+
+    // For obsidian-memory, set up the vault path
+    if (definition.id === 'builtin-obsidian-memory' && userDataPath) {
+      const obsidianVaultPath = userDataPath + '/obsidian-vault'
+      serverEnv.OBSIDIAN_VAULT_PATH = obsidianVaultPath
+      console.log(`[builtInServers] Setting Obsidian vault path: ${obsidianVaultPath}`)
+    }
+
     const builtInConfig: Omit<MCPServer, 'status' | 'stateMetadata'> = {
       id: definition.id,
       name: definition.name,
@@ -113,7 +125,7 @@ export async function initializeBuiltInServers(
       category: definition.category,
       command: definition.command,
       args: [serverPath],
-      env: definition.env,
+      env: serverEnv,
       enabled: true, // Built-in servers are enabled by default
       requiresAuth: definition.requiresAuth,
       authType: definition.authType,

@@ -664,6 +664,11 @@ ipcMain.handle('app:get-root', () => {
   return app.getAppPath();
 });
 
+// Get user data directory (for storing configs, vaults, etc.)
+ipcMain.handle('app:get-user-data-path', () => {
+  return getUserDataPath();
+});
+
 // Open external URL (for OAuth flows)
 ipcMain.handle('app:open-external', async (_event, url: string) => {
   try {

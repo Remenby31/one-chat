@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 const electronAPI = {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   getAppRoot: () => ipcRenderer.invoke('app:get-root'),
+  getUserDataPath: () => ipcRenderer.invoke('app:get-user-data-path'),
 
   // Config file operations
   readConfig: (filename: string) => ipcRenderer.invoke('config:read', filename),

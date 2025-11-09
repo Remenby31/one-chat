@@ -66,14 +66,25 @@ Toutes les notes doivent être accessibles depuis cette note racine.`;
   async rebuildIndex(): Promise<void> {
     this.notesIndex.clear();
 
-    const pattern = path.join(this.config.vaultPath, '**/*.md');
+    // Normalize vault path to forward slashes for glob compatibility
+    // On Windows, path.join produces backslashes, but glob expects forward slashes
+    const vaultPathNormalized = this.config.vaultPath
+      .split(path.sep)
+      .join('/');
+
+    const pattern = `${vaultPathNormalized}/**/*.md`;
     console.error(`[rebuildIndex] Vault path: ${this.config.vaultPath}`);
+    console.error(`[rebuildIndex] Normalized path: ${vaultPathNormalized}`);
     console.error(`[rebuildIndex] Glob pattern: ${pattern}`);
 
+    // Normalize ignore patterns to use forward slashes
+    const ignorePatterns = this.config.ignorePatterns.map(p =>
+      `${vaultPathNormalized}/${p}`
+    );
+    console.error(`[rebuildIndex] Ignore patterns:`, ignorePatterns);
+
     const files = await glob(pattern, {
-      ignore: this.config.ignorePatterns.map(p =>
-        path.join(this.config.vaultPath, p)
-      )
+      ignore: ignorePatterns
     });
 
     console.error(`[rebuildIndex] Found ${files.length} files:`, files);

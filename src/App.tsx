@@ -78,6 +78,9 @@ function App() {
         const selectedModelId = await window.electronAPI.readConfig('selectedModel.json')
         const savedMcpServers = await window.electronAPI.readConfig('mcpServers.json')
 
+        // Get user data path for MCP server configuration (vaults, etc.)
+        const userDataPath = await window.electronAPI.getUserDataPath()
+
         if (savedApiKeys) {
           setApiKeys(savedApiKeys)
         }
@@ -97,7 +100,7 @@ function App() {
           let recoveredServers = await mcpManager.recoverStuckServers(savedMcpServers)
 
           // Initialize built-in servers (adds new built-in servers, updates existing ones)
-          recoveredServers = await initializeBuiltInServers(recoveredServers)
+          recoveredServers = await initializeBuiltInServers(recoveredServers, userDataPath)
 
           setMcpServers(recoveredServers)
 
@@ -108,7 +111,7 @@ function App() {
           await mcpManager.startEnabledServers(recoveredServers)
         } else {
           // No saved servers - initialize with built-in servers only
-          const builtInServers = await initializeBuiltInServers([])
+          const builtInServers = await initializeBuiltInServers([], userDataPath)
 
           setMcpServers(builtInServers)
           await window.electronAPI.writeConfig('mcpServers.json', builtInServers)

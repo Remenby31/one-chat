@@ -34,6 +34,7 @@ const DEFAULT_CONFIG: MemoryConfig = {
 class ObsidianMemoryServer {
   private server: Server;
   private memoryManager: MemoryManager;
+  private readonly initPromise: Promise<void>;
 
   constructor() {
     this.server = new Server(
@@ -50,12 +51,31 @@ class ObsidianMemoryServer {
     );
 
     this.memoryManager = new MemoryManager(DEFAULT_CONFIG);
+
+    // Initialize immediately - all handlers will await this Promise
+    this.initPromise = this.memoryManager
+      .initialize()
+      .catch(err => {
+        console.error('[ObsidianMemoryServer] Initialization failed:', err);
+        throw err;
+      });
+
     this.setupHandlers();
   }
 
+  /**
+   * Ensure memory manager is fully initialized before processing requests
+   * This is called by all handlers to guarantee consistent state
+   */
+  private async ensureInitialized(): Promise<void> {
+    await this.initPromise;
+  }
+
   private setupHandlers() {
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      await this.ensureInitialized();
+      return {
+        tools: [
         {
           name: 'memory_create',
           description: 'Create a new note in the memory vault. IMPORTANT: Must specify linkedFrom OR include [[wiki-links]] in content to maintain graph connectivity. Notes without connections will be rejected.',
@@ -195,9 +215,12 @@ class ObsidianMemoryServer {
           }
         }
       ]
-    }));
+      };
+    });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      await this.ensureInitialized();
+
       const { name, arguments: args } = request.params;
 
       if (!args) {
@@ -473,20 +496,25 @@ class ObsidianMemoryServer {
     });
 
     // Prompts handlers
-    this.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-      prompts: [
-        {
-          name: 'tool_call:memory_index',
-          description: 'Simulated tool call to retrieve the memory vault root index',
-        },
-        {
-          name: 'tool_result:memory_index',
-          description: 'Result of the memory_get_root tool call - shows vault structure',
-        }
-      ]
-    }));
+    this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
+      await this.ensureInitialized();
+      return {
+        prompts: [
+          {
+            name: 'tool_call:memory_index',
+            description: 'Simulated tool call to retrieve the memory vault root index',
+          },
+          {
+            name: 'tool_result:memory_index',
+            description: 'Result of the memory_get_root tool call - shows vault structure',
+          }
+        ]
+      };
+    });
 
     this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+      await this.ensureInitialized();
+
       const { name } = request.params;
 
       if (name === 'tool_call:memory_index') {
@@ -512,28 +540,14 @@ class ObsidianMemoryServer {
 
       if (name === 'tool_result:memory_index') {
         try {
-          // Ensure memory manager is initialized
-          if (!this.memoryManager) {
+          // At this point, ensureInitialized() has guaranteed that MemoryManager is ready
+          const rootNote = await this.memoryManager.getRootNote();
+
+          if (!rootNote) {
             throw new McpError(
               ErrorCode.InternalError,
-              'Memory manager not initialized'
+              'Root note not found. This should not happen after initialization.'
             );
-          }
-
-          let rootNote = await this.memoryManager.getRootNote();
-          if (!rootNote) {
-            // Try to initialize if not already done
-            console.error('[obsidian-memory] Root note not found, attempting to initialize...');
-            await this.memoryManager.initialize();
-
-            // Try again after initialization
-            rootNote = await this.memoryManager.getRootNote();
-            if (!rootNote) {
-              throw new McpError(
-                ErrorCode.InternalError,
-                'Root note not found even after initialization. Check vault path and _index.md file.'
-              );
-            }
           }
 
           // Format the root note as a tool result (JSON format)
@@ -580,7 +594,8 @@ class ObsidianMemoryServer {
   }
 
   async start() {
-    await this.memoryManager.initialize();
+    // Wait for initialization to complete before connecting
+    await this.initPromise;
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
