@@ -69,23 +69,20 @@ export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) =>
             ? getToolResultsForMessage(messages, index)
             : {}
 
-        return (
-          <div key={message.id}>
-            {message.role === 'user' ? (
-              <UserMessage message={message} />
-            ) : message.role === 'assistant' ? (
-              <AssistantMessage
-                message={message}
-                isLast={index === messages.length - 1}
-                onRegenerate={onRegenerate}
-                toolResults={toolResults}
-              />
-            ) : message.role === 'tool' ? (
-              // Skip tool messages (they're shown in assistant messages)
-              null
-            ) : null}
-          </div>
-        )
+        // Skip tool messages (they're shown in assistant messages)
+        if (message.role === 'tool') return null
+
+        return message.role === 'user' ? (
+          <UserMessage key={message.id} message={message} />
+        ) : message.role === 'assistant' ? (
+          <AssistantMessage
+            key={message.id}
+            message={message}
+            isLast={index === messages.length - 1}
+            onRegenerate={onRegenerate}
+            toolResults={toolResults}
+          />
+        ) : null
       })}
 
       {/* Spacer when thread has messages */}

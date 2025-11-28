@@ -29,13 +29,24 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
     return toolCall.result !== undefined ? formatForDisplay(toolCall.result) : ''
   }, [toolCall.result])
 
+  // Detect content type (JSON or text)
+  const isJson = useMemo(() => {
+    if (!formattedResult) return false
+    try {
+      JSON.parse(formattedResult)
+      return true
+    } catch {
+      return false
+    }
+  }, [formattedResult])
+
   // Common SyntaxHighlighter styles
   const syntaxStyle = {
     margin: 0,
     padding: '10px',
     fontSize: '10px',
     lineHeight: '1.5',
-    background: isDark ? 'rgba(40, 42, 54, 0.3)' : 'rgba(250, 250, 250, 0.3)',
+    background: 'transparent',
   }
 
   // Running state
@@ -72,15 +83,21 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
               <span className="text-muted-foreground/50">· {status.errorMessage}</span>
             )}
           </div>
-          <div className="rounded-md overflow-hidden border border-white/5">
-            <SyntaxHighlighter
-              language="json"
-              style={syntaxTheme}
-              customStyle={syntaxStyle}
-              wrapLongLines
-            >
-              {formattedResult}
-            </SyntaxHighlighter>
+          <div className="rounded-md overflow-hidden border border-white/5 [&_*]:!bg-transparent">
+            {isJson ? (
+              <SyntaxHighlighter
+                language="json"
+                style={syntaxTheme}
+                customStyle={syntaxStyle}
+                wrapLongLines
+              >
+                {formattedResult}
+              </SyntaxHighlighter>
+            ) : (
+              <pre className="p-2.5 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
+                {formattedResult}
+              </pre>
+            )}
           </div>
         </div>
       </m.div>
@@ -95,15 +112,21 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
       transition={{ duration: 0.15 }}
       className={className}
     >
-      <div className="rounded-md overflow-hidden border border-white/5">
-        <SyntaxHighlighter
-          language="json"
-          style={syntaxTheme}
-          customStyle={syntaxStyle}
-          wrapLongLines
-        >
-          {formattedResult}
-        </SyntaxHighlighter>
+      <div className="rounded-md overflow-hidden border border-white/5 [&_*]:!bg-transparent">
+        {isJson ? (
+          <SyntaxHighlighter
+            language="json"
+            style={syntaxTheme}
+            customStyle={syntaxStyle}
+            wrapLongLines
+          >
+            {formattedResult}
+          </SyntaxHighlighter>
+        ) : (
+          <pre className="p-2.5 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
+            {formattedResult}
+          </pre>
+        )}
       </div>
     </m.div>
   )

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useChatStore } from '@/lib/chatStore'
+import { useChatStore, type ToolCall } from '@/lib/chatStore'
 import { useThreadStore } from '@/lib/threadStore'
 import type { ModelConfig } from '@/types/model'
 import type { ApiKey } from '@/types/apiKey'
@@ -220,11 +220,10 @@ export function useStreamingChat(
         ...userConversationMessages
       ]
 
-      // Multi-turn loop to handle tool calls
+      // Multi-turn loop to handle tool calls (unlimited)
       let turnCount = 0
-      const MAX_TURNS = 10
 
-      while (turnCount < MAX_TURNS) {
+      while (true) {
         turnCount++
 
         // At the start of each turn, get the current assistant message ID
@@ -281,6 +280,7 @@ export function useStreamingChat(
         let buffer = ''
         let fullText = ''
         let toolCalls: any[] = []
+        let streamingToolCalls: ToolCall[] = [] // For real-time UI updates
         let firstTokenTime: number | null = null
         let chunkCounter = 0
 
@@ -314,6 +314,10 @@ export function useStreamingChat(
                 if (delta?.content) {
                   if (firstTokenTime === null) {
                     firstTokenTime = performance.now()
+                    // Set streaming phase to text on first token
+                    if (currentAssistantMessageId) {
+                      store.updateStreamingPhase(currentAssistantMessageId, 'text')
+                    }
                   }
 
                   fullText += delta.content
@@ -322,25 +326,51 @@ export function useStreamingChat(
                   store.setStreamingText(fullText)
                 }
 
-                // Handle tool calls
+                // Handle tool calls - with real-time UI updates
                 if (delta?.tool_calls) {
                   for (const toolCallDelta of delta.tool_calls) {
                     const index = toolCallDelta.index
 
+                    // Initialize tool call if new
                     if (!toolCalls[index]) {
                       toolCalls[index] = {
-                        id: toolCallDelta.id || '',
+                        id: toolCallDelta.id || `tc_${Date.now()}_${index}`,
                         type: 'function',
                         function: {
                           name: toolCallDelta.function?.name || '',
                           arguments: ''
                         }
                       }
+                      // Initialize streaming tool call for UI
+                      streamingToolCalls[index] = {
+                        id: toolCalls[index].id,
+                        toolName: toolCallDelta.function?.name || '',
+                        args: {},
+                        status: 'streaming'
+                      }
                     }
 
+                    // Update name if received
+                    if (toolCallDelta.function?.name) {
+                      toolCalls[index].function.name = toolCallDelta.function.name
+                      streamingToolCalls[index].toolName = toolCallDelta.function.name
+                    }
+
+                    // Accumulate arguments
                     if (toolCallDelta.function?.arguments) {
                       toolCalls[index].function.arguments += toolCallDelta.function.arguments
+                      // Try to parse partial args for preview (may fail, that's ok)
+                      try {
+                        streamingToolCalls[index].args = JSON.parse(toolCalls[index].function.arguments)
+                      } catch {
+                        // Keep previous args if parsing fails (incomplete JSON)
+                      }
                     }
+                  }
+
+                  // Update UI with streaming tool calls in real-time
+                  if (currentAssistantMessageId && streamingToolCalls.length > 0) {
+                    store.updateStreamingToolCalls(currentAssistantMessageId, [...streamingToolCalls])
                   }
                 }
               } catch (e) {
@@ -388,10 +418,37 @@ export function useStreamingChat(
         }
         conversationMessages.push(assistantMessageForAPI)
 
+        // Mark all tool calls as ready for execution
+        if (currentAssistantMessageId) {
+          streamingToolCalls.forEach(tc => {
+            store.setToolCallStatus(currentAssistantMessageId!, tc.id, 'ready')
+          })
+        }
+
         // Execute each tool call
         const toolResults: APIMessage[] = []
-        for (const toolCall of toolCalls) {
+        for (let i = 0; i < toolCalls.length; i++) {
+          const toolCall = toolCalls[i]
           const startTime = performance.now()
+
+          // Mark as executing and update with startTime
+          if (currentAssistantMessageId) {
+            const currentMessages = useChatStore.getState().messages
+            const messageIndex = currentMessages.findIndex(m => m.id === currentAssistantMessageId)
+
+            if (messageIndex !== -1) {
+              const message = currentMessages[messageIndex]
+              if (message.toolCalls) {
+                const updatedToolCalls = message.toolCalls.map(tc =>
+                  tc.id === toolCall.id ? { ...tc, startTime, status: 'executing' as const } : tc
+                )
+                store.updateMessageById(currentAssistantMessageId, {
+                  toolCalls: updatedToolCalls,
+                  streamingPhase: 'tool_executing'
+                })
+              }
+            }
+          }
 
           try {
             const [serverId, ...toolNameParts] = toolCall.function.name.split('__')
@@ -405,20 +462,17 @@ export function useStreamingChat(
               throw new Error('Invalid tool arguments')
             }
 
-            // Add tool call to store (for UI display)
-            store.addToolCall({
-              id: toolCall.id,
-              toolName: toolCall.function.name,
-              args,
-              startTime,
-            })
-
-            // Call the tool
+            // Call the tool (tool call already added via updateStreamingToolCalls during streaming)
             const result = await mcpManager.callTool(serverId, toolName, args)
             const endTime = performance.now()
 
             // Update tool call with result
             store.updateToolCall(toolCall.id, result, endTime)
+
+            // Mark as complete
+            if (currentAssistantMessageId) {
+              store.setToolCallStatus(currentAssistantMessageId, toolCall.id, 'complete')
+            }
 
             toolResults.push({
               role: 'tool',
@@ -431,6 +485,11 @@ export function useStreamingChat(
             const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
             store.updateToolCall(toolCall.id, { error: errorMessage }, endTime)
+
+            // Mark as error
+            if (currentAssistantMessageId) {
+              store.setToolCallStatus(currentAssistantMessageId, toolCall.id, 'error')
+            }
 
             toolResults.push({
               role: 'tool',
@@ -459,12 +518,6 @@ export function useStreamingChat(
           content: '',
           isStreaming: true,
         })
-      }
-
-      if (turnCount >= MAX_TURNS) {
-        console.warn('[useStreamingChat] Max turns reached')
-        const currentContent = store.messages[store.messages.length - 1]?.content || ''
-        store.updateLastMessage(currentContent + '\n\n_[Max conversation turns reached. Please start a new message if you need more assistance.]_')
       }
 
       store.finishGeneration()

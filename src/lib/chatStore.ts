@@ -2,6 +2,17 @@ import { create } from 'zustand'
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
+// Streaming phases for fine-grained UI feedback
+export type StreamingPhase =
+  | 'idle'           // Not streaming
+  | 'text'           // Streaming text content
+  | 'tool_parsing'   // Parsing tool call (name + arguments)
+  | 'tool_executing' // Executing tool
+  | 'complete'       // Done
+
+// Tool call status during streaming
+export type ToolCallStatus = 'streaming' | 'ready' | 'executing' | 'complete' | 'error'
+
 export interface MessageAttachment {
   id: string
   name: string
@@ -18,6 +29,7 @@ export interface ToolCall {
   startTime?: number
   endTime?: number
   duration?: number
+  status?: ToolCallStatus // For streaming state tracking
 }
 
 export interface ChatMessage {
@@ -28,6 +40,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   timestamp: number
   isStreaming?: boolean
+  streamingPhase?: StreamingPhase // Current streaming phase
   // For tool messages
   tool_call_id?: string
   // For assistant messages with tool calls
@@ -65,6 +78,10 @@ interface ChatState {
   setAbortController: (controller: AbortController | null) => void
   clearMessages: () => void
   loadMessages: (messages: ChatMessage[]) => void
+  // New streaming actions
+  updateStreamingPhase: (messageId: string, phase: StreamingPhase) => void
+  updateStreamingToolCalls: (messageId: string, toolCalls: ToolCall[]) => void
+  setToolCallStatus: (messageId: string, toolCallId: string, status: ToolCallStatus) => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -232,5 +249,59 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Load messages (from thread)
   loadMessages: (messages: ChatMessage[]) => {
     set({ messages, currentStreamingText: '' })
+  },
+
+  // Update streaming phase for a message
+  updateStreamingPhase: (messageId, phase) => {
+    set((state) => {
+      const index = state.messages.findIndex(m => m.id === messageId)
+      if (index === -1) return state
+
+      const newMessages = [...state.messages]
+      newMessages[index] = {
+        ...newMessages[index],
+        streamingPhase: phase,
+      }
+      return { messages: newMessages }
+    })
+  },
+
+  // Update tool calls during streaming (real-time updates)
+  updateStreamingToolCalls: (messageId, toolCalls) => {
+    set((state) => {
+      const index = state.messages.findIndex(m => m.id === messageId)
+      if (index === -1) return state
+
+      const newMessages = [...state.messages]
+      newMessages[index] = {
+        ...newMessages[index],
+        toolCalls,
+        streamingPhase: 'tool_parsing',
+      }
+      return { messages: newMessages }
+    })
+  },
+
+  // Set status for a specific tool call
+  setToolCallStatus: (messageId, toolCallId, status) => {
+    set((state) => {
+      const index = state.messages.findIndex(m => m.id === messageId)
+      if (index === -1) return state
+
+      const message = state.messages[index]
+      if (!message.toolCalls) return state
+
+      const newToolCalls = message.toolCalls.map(tc =>
+        tc.id === toolCallId ? { ...tc, status } : tc
+      )
+
+      const newMessages = [...state.messages]
+      newMessages[index] = {
+        ...newMessages[index],
+        toolCalls: newToolCalls,
+        streamingPhase: status === 'executing' ? 'tool_executing' : message.streamingPhase,
+      }
+      return { messages: newMessages }
+    })
   },
 }))

@@ -10,7 +10,7 @@ interface UserMessageProps {
 export const UserMessage: FC<UserMessageProps> = ({ message }) => {
   return (
     <div
-      className="mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-4 duration-200 fade-in slide-in-from-bottom-1 last:mb-5 [&:where(>*)]:col-start-2"
+      className="mx-auto grid w-full max-w-[var(--thread-max-width)] animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 py-3 duration-200 fade-in slide-in-from-bottom-1 last:mb-5 [&:where(>*)]:col-start-2"
       data-role="user"
     >
       {/* Attachments if any */}

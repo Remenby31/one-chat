@@ -31,6 +31,53 @@ const DEFAULT_CONFIG: MemoryConfig = {
   rootNoteName: 'root-memory.md'
 };
 
+/**
+ * Extract a contextual snippet around the first match of any query in the content
+ * @param content - The full note content
+ * @param queries - The search query or array of queries
+ * @param contextLength - Characters to show before and after the match
+ * @returns A snippet with the query highlighted in context
+ */
+function extractSearchSnippet(content: string, queries: string | string[], contextLength = 100): string {
+  // Normalize content to a single line for searching
+  const normalizedContent = content.replace(/\n+/g, ' ').replace(/\s+/g, ' ');
+  const lowerContent = normalizedContent.toLowerCase();
+
+  // Convert single query to array for uniform handling
+  const queryArray = Array.isArray(queries) ? queries : [queries];
+
+  // Find the first occurrence of any query
+  let matchIndex = -1;
+  let matchedQueryLength = 0;
+
+  for (const query of queryArray) {
+    const lowerQuery = query.toLowerCase();
+    const index = lowerContent.indexOf(lowerQuery);
+
+    if (index !== -1 && (matchIndex === -1 || index < matchIndex)) {
+      matchIndex = index;
+      matchedQueryLength = query.length;
+    }
+  }
+
+  if (matchIndex === -1) {
+    // No query found, return the beginning of the content
+    return normalizedContent.substring(0, contextLength * 2) + '...';
+  }
+
+  // Extract context around the match
+  const start = Math.max(0, matchIndex - contextLength);
+  const end = Math.min(normalizedContent.length, matchIndex + matchedQueryLength + contextLength);
+
+  let snippet = normalizedContent.substring(start, end);
+
+  // Add ellipsis if we're not at the start/end
+  if (start > 0) snippet = '...' + snippet;
+  if (end < normalizedContent.length) snippet = snippet + '...';
+
+  return snippet;
+}
+
 class ObsidianMemoryServer {
   private server: Server;
   private memoryManager: MemoryManager;
@@ -173,11 +220,17 @@ class ObsidianMemoryServer {
         },
         {
           name: 'memory_search',
-          description: 'Search notes by content, tags, or title',
+          description: 'Search notes by content, tags, or title. Supports multiple keywords for broader search.',
           inputSchema: {
             type: 'object',
             properties: {
-              query: { type: 'string', description: 'Search query' },
+              query: {
+                oneOf: [
+                  { type: 'string', description: 'Single search query' },
+                  { type: 'array', items: { type: 'string' }, description: 'Multiple search keywords' }
+                ],
+                description: 'Search query (string) or multiple keywords (array of strings)'
+              },
               tags: { type: 'array', items: { type: 'string' } },
               folder: { type: 'string' },
               limit: { type: 'number', default: 20 }
@@ -274,15 +327,7 @@ class ObsidianMemoryServer {
               content: [
                 {
                   type: 'text',
-                  text: JSON.stringify({
-                    id: note.id,
-                    title: note.title,
-                    path: note.path,
-                    content: note.content,
-                    frontmatter: note.frontmatter,
-                    links: note.links,
-                    backlinks: note.backlinks
-                  }, null, 2)
+                  text: note.content
                 }
               ]
             };
@@ -397,27 +442,42 @@ class ObsidianMemoryServer {
           }
 
           case 'memory_search': {
-            const results = await this.memoryManager.searchNotes({
-              query: args.query as string,
-              tags: args.tags as string[] | undefined,
-              folder: args.folder as string | undefined,
-              limit: args.limit as number | undefined
-            });
+            const query = args.query as string | string[];
+            const queries = Array.isArray(query) ? query : [query];
+
+            // Search for each keyword and combine results
+            const allResultsMap = new Map<string, any>();
+
+            for (const q of queries) {
+              const results = await this.memoryManager.searchNotes({
+                query: q,
+                tags: args.tags as string[] | undefined,
+                folder: args.folder as string | undefined,
+                limit: args.limit as number | undefined
+              });
+
+              // Add results to map (deduplicates by note ID)
+              for (const note of results) {
+                if (!allResultsMap.has(note.id)) {
+                  allResultsMap.set(note.id, note);
+                }
+              }
+            }
+
+            // Convert map to array
+            const combinedResults = Array.from(allResultsMap.values());
+
+            // Format: Title + contextual snippet for each result
+            const formattedResults = combinedResults.map(n => {
+              const snippet = extractSearchSnippet(n.content, query);
+              return `## ${n.title}\n${snippet}`;
+            }).join('\n\n');
 
             return {
               content: [
                 {
                   type: 'text',
-                  text: JSON.stringify(
-                    results.map(n => ({
-                      id: n.id,
-                      title: n.title,
-                      path: n.path,
-                      excerpt: n.content.substring(0, 200) + '...'
-                    })),
-                    null,
-                    2
-                  )
+                  text: formattedResults || 'No results found.'
                 }
               ]
             };
@@ -447,14 +507,7 @@ class ObsidianMemoryServer {
               content: [
                 {
                   type: 'text',
-                  text: JSON.stringify({
-                    id: rootNote.id,
-                    title: rootNote.title,
-                    path: rootNote.path,
-                    content: rootNote.content,
-                    links: rootNote.links,
-                    backlinks: rootNote.backlinks
-                  }, null, 2)
+                  text: rootNote.content
                 }
               ]
             };
@@ -553,30 +606,14 @@ class ObsidianMemoryServer {
             );
           }
 
-          // Format the root note as a tool result (JSON format)
-          const toolResult = JSON.stringify({
-            success: true,
-            tool: 'memory_get_root',
-            data: {
-              id: rootNote.id,
-              title: rootNote.title,
-              path: rootNote.path,
-              content: rootNote.content,
-              links: rootNote.links,
-              backlinks: rootNote.backlinks,
-              tags: rootNote.frontmatter.tags || [],
-              created: rootNote.created,
-              modified: rootNote.modified
-            }
-          }, null, 2);
-
+          // Return only the content - no metadata pollution
           return {
             messages: [
               {
                 role: 'user',
                 content: {
                   type: 'text',
-                  text: toolResult
+                  text: rootNote.content
                 }
               }
             ]

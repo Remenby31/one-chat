@@ -5,16 +5,39 @@
 /**
  * Format a value for display with syntax highlighting
  * Handles JSON objects, strings, and other types
+ * Extracts text content from MCP text responses
  */
 export function formatForDisplay(value: any): string {
+  // Check if this is an MCP text response format: { content: [{ type: "text", text: "..." }] }
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray(value.content) &&
+    value.content.length > 0 &&
+    value.content[0].type === 'text' &&
+    typeof value.content[0].text === 'string'
+  ) {
+    // Extract the text content
+    const textContent = value.content[0].text
+
+    // Try to parse the text as JSON for pretty printing
+    try {
+      const parsed = JSON.parse(textContent)
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      // Not JSON - replace escaped newlines with real newlines
+      return textContent.replace(/\\n/g, '\n')
+    }
+  }
+
   if (typeof value === 'string') {
     try {
       // Try to parse as JSON for pretty printing
       const parsed = JSON.parse(value)
       return JSON.stringify(parsed, null, 2)
     } catch {
-      // Not JSON, return as-is
-      return value
+      // Not JSON - replace escaped newlines with real newlines
+      return value.replace(/\\n/g, '\n')
     }
   }
 
