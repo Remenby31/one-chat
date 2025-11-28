@@ -50,8 +50,9 @@ interface ChatState {
   abortController: AbortController | null
 
   // Actions
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string // Returns message ID
   updateLastMessage: (content: string) => void
+  updateMessageById: (id: string, updates: Partial<ChatMessage>) => boolean // Returns success
   setStreamingText: (text: string) => void
   startGeneration: () => void
   stopGeneration: () => void
@@ -74,16 +75,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   pendingAttachments: [],
   abortController: null,
 
-  // Add a new message
+  // Add a new message (returns the message ID)
   addMessage: (message) => {
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     const newMessage: ChatMessage = {
       ...message,
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: messageId,
       timestamp: Date.now(),
     }
     set((state) => ({
       messages: [...state.messages, newMessage],
     }))
+    return messageId
   },
 
   // Update the last message (for streaming)
@@ -99,6 +102,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       return { messages }
     })
+  },
+
+  // Update a specific message by ID (returns true if found and updated)
+  updateMessageById: (id, updates) => {
+    const { messages } = get()
+    const index = messages.findIndex(m => m.id === id)
+
+    if (index === -1) {
+      console.warn(`[chatStore] Message with ID ${id} not found for update`)
+      return false
+    }
+
+    set((state) => {
+      const newMessages = [...state.messages]
+      newMessages[index] = {
+        ...newMessages[index],
+        ...updates,
+      }
+      return { messages: newMessages }
+    })
+    return true
   },
 
   // Set streaming text

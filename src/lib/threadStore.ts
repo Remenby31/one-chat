@@ -136,7 +136,16 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       // Sort by updatedAt (most recent first)
       threads.sort((a, b) => b.updatedAt - a.updatedAt)
 
-      set({ threads, isLoading: false })
+      // Preserve draft threads (they exist in memory but not on disk yet)
+      const currentDrafts = get().draftThreads
+      const draftMetadatas = Array.from(currentDrafts.values()).map(d => d.metadata)
+
+      // Merge drafts with loaded threads (drafts first, then dedupe by ID)
+      const existingIds = new Set(threads.map(t => t.id))
+      const draftsToAdd = draftMetadatas.filter(d => !existingIds.has(d.id))
+      const allThreads = [...draftsToAdd, ...threads]
+
+      set({ threads: allThreads, isLoading: false })
     } catch (error) {
       console.error('[ThreadStore] Failed to load threads:', error)
       set({ isLoading: false })
@@ -259,14 +268,27 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
    */
   saveThreadMessages: async (threadId: string, messages: ChatMessage[], systemPrompt?: string) => {
     try {
-      const thread = get().threads.find(t => t.id === threadId)
-      if (!thread) {
-        console.error(`[ThreadStore] Thread ${threadId} not found for save`)
-        return
+      let thread = get().threads.find(t => t.id === threadId)
+
+      // Check if this is a draft thread
+      const isDraft = get().draftThreads.has(threadId)
+
+      // If thread not found in threads list, try to get from drafts (race condition recovery)
+      if (!thread && isDraft) {
+        const draftThread = get().draftThreads.get(threadId)
+        if (draftThread) {
+          thread = draftThread.metadata
+          // Re-add to threads list
+          set((state) => ({
+            threads: [draftThread.metadata, ...state.threads.filter(t => t.id !== threadId)]
+          }))
+        }
       }
 
-      // Check if this is a draft thread (first time being persisted)
-      const isDraft = get().draftThreads.has(threadId)
+      if (!thread) {
+        console.error(`[ThreadStore] Thread ${threadId} not found for save (not in threads or drafts)`)
+        return
+      }
 
       // Update metadata
       const updatedMetadata: ThreadMetadata = {
@@ -314,7 +336,16 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
    */
   updateThreadTitle: async (threadId: string, messages: ChatMessage[]) => {
     try {
-      const thread = get().threads.find(t => t.id === threadId)
+      let thread = get().threads.find(t => t.id === threadId)
+
+      // If thread not found, try to recover from drafts
+      if (!thread) {
+        const draftThread = get().draftThreads.get(threadId)
+        if (draftThread) {
+          thread = draftThread.metadata
+        }
+      }
+
       if (!thread) {
         console.error(`[ThreadStore] Thread ${threadId} not found for title update`)
         return

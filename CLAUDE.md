@@ -43,21 +43,23 @@ Jarvis is an Electron-based desktop chat application that integrates AI models v
   - Provides error handling via toast notifications (errorToast with emoji categorization)
   - Sets up config file watchers for real-time sync across windows
 - `src/hooks/useStreamingChat.ts` - Chat hook for streaming messages:
-  - Manages chat state via `chatStore` (Zustand)
+  - Manages chat state via `chatStore` (Zustand) with ID-based message tracking for robustness
   - Fetches API key from storage and resolves environment variables (`$ENV_VAR_NAME` format)
   - Sends requests directly to OpenAI-compatible `/chat/completions` endpoint via native fetch
   - Streams responses as SSE (Server-Sent Events) with ReadableStream + TextDecoder
   - Integrates MCP tools via `getInjectedMessages()` for tool injection
-  - Implements multi-turn tool execution with MAX_TURNS=10 loop limit
-  - Auto-saves messages to thread store
+  - Implements multi-turn tool execution with MAX_TURNS=10 loop limit, validates message chains via `prepareMessagesForAPI()`
+  - Auto-saves messages to thread store with draft thread preservation
   - Provides detailed error messages categorized by HTTP status (401, 404, 429, 500+)
 - `src/stores/chatStore.ts` - Zustand store for chat state:
-  - Manages messages, streaming state, abort controller
-  - Tracks tool calls and execution
-  - Handles message attachments
+  - Manages messages with ID-based tracking for robust updates (`updateMessageById()`)
+  - Tracks tool calls and execution, handles message attachments
+- `src/lib/messageValidation.ts` - Message validation & API preparation:
+  - `prepareMessagesForAPI()`: Filters messages and validates tool call chains before API requests
+  - Removes orphaned tool messages that would cause API errors
 - `src/stores/threadStore.ts` - Zustand store for thread persistence:
-  - Manages conversation threads (thread list, current thread)
-  - Persists messages to file system
+  - Manages conversation threads with draft thread support (in-memory until first save)
+  - Preserves drafts across `loadThreads()` calls, recovers from race conditions
 - `src/types/model.ts` - Defines ModelConfig interface: `{ id, name, apiKeyId, model, temperature?, maxTokens?, systemPrompt? }`
 - `src/types/apiKey.ts` - Defines ApiKey interface: `{ id, name, key, baseURL }`
   - Provider detection from API key prefix (OpenAI, Anthropic, Google, Cohere, Mistral, etc.)

@@ -6,6 +6,7 @@ import type { ApiKey } from '@/types/apiKey'
 import type { MCPServer, MCPTool } from '@/types/mcp'
 import { mcpManager } from '@/lib/mcpManager'
 import { getInjectedMessages } from '@/lib/mcpPromptInjection'
+import { prepareMessagesForAPI, type APIMessage } from '@/lib/messageValidation'
 
 /**
  * Main hook for managing streaming chat with MCP tool support
@@ -183,14 +184,17 @@ export function useStreamingChat(
     const abortController = new AbortController()
     store.setAbortController(abortController)
 
+    // Track the current assistant message ID for updates
+    let currentAssistantMessageId: string | null = null
+
     try {
       // Get current state synchronously (Zustand updates are async, so we need getState())
       const currentMessages = useChatStore.getState().messages
 
       // Fetch and inject conventional prompts from MCP servers
-      let injectedMessages: any[] = []
+      let injectedMessages: APIMessage[] = []
       try {
-        injectedMessages = await getInjectedMessages(mcpManager)
+        injectedMessages = await getInjectedMessages(mcpManager) as APIMessage[]
       } catch (error) {
         console.warn('[useStreamingChat] Failed to fetch conventional prompts:', error)
       }
@@ -206,40 +210,12 @@ export function useStreamingChat(
         injectedMessages.unshift({ role: 'system' as const, content: systemPrompt })
       }
 
-      // Convert store messages to OpenAI format (exclude empty and streaming messages)
-      // BUT: Keep assistant messages with tool_calls even if content is empty
-      const userConversationMessages = currentMessages
-        .filter(m => {
-          // Skip streaming messages
-          if (m.isStreaming) return false
-          // Keep messages with content
-          if (m.content.trim() !== '') return true
-          // Keep assistant messages with tool_call_requests (they can be empty)
-          if (m.role === 'assistant' && m.tool_call_requests) return true
-          return false
-        })
-        .map((msg) => {
-          // Include tool_calls if present
-          const message: any = {
-            role: msg.role,
-            content: msg.content
-          }
-
-          // Add tool_call_id for tool messages
-          if (msg.role === 'tool' && msg.tool_call_id) {
-            message.tool_call_id = msg.tool_call_id
-          }
-
-          // Add tool_calls for assistant messages with tool requests
-          if (msg.role === 'assistant' && msg.tool_call_requests) {
-            message.tool_calls = msg.tool_call_requests
-          }
-
-          return message
-        })
+      // Prepare messages for API using the validation function
+      // This handles filtering, mapping, and validates tool chains
+      const userConversationMessages = prepareMessagesForAPI(currentMessages)
 
       // Build final conversation: injected prompts + user conversation
-      let conversationMessages = [
+      let conversationMessages: APIMessage[] = [
         ...injectedMessages,
         ...userConversationMessages
       ]
@@ -250,6 +226,14 @@ export function useStreamingChat(
 
       while (turnCount < MAX_TURNS) {
         turnCount++
+
+        // At the start of each turn, get the current assistant message ID
+        // (created at line 148 for turn 1, or at the end of previous turn for turns 2+)
+        const storeMessages = useChatStore.getState().messages
+        const lastMessage = storeMessages[storeMessages.length - 1]
+        if (lastMessage?.role === 'assistant' && lastMessage.isStreaming) {
+          currentAssistantMessageId = lastMessage.id
+        }
 
         const requestBody: any = {
           model: modelConfig.model,
@@ -371,52 +355,41 @@ export function useStreamingChat(
           break
         }
 
-        // Save tool calls to the last assistant message in store
-        if (toolCalls.length > 0) {
-          const currentStoreMessages = useChatStore.getState().messages
-          if (currentStoreMessages.length > 0 && currentStoreMessages[currentStoreMessages.length - 1].role === 'assistant') {
-            const lastMessage = currentStoreMessages[currentStoreMessages.length - 1]
-            const updatedMessage = {
-              ...lastMessage,
-              tool_call_requests: toolCalls.map(tc => ({
-                id: tc.id,
-                type: 'function' as const,
-                function: {
-                  name: tc.function.name,
-                  arguments: tc.function.arguments
-                }
-              }))
-            }
-            // Update the last message with tool_call_requests
-            const newMessages = [...currentStoreMessages]
-            newMessages[newMessages.length - 1] = updatedMessage
-            store.loadMessages(newMessages)
+        // Format tool_call_requests for storage
+        const formattedToolCalls = toolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: {
+            name: tc.function.name,
+            arguments: tc.function.arguments
           }
+        }))
+
+        // Update the assistant message with tool_call_requests using ID tracking (robust)
+        if (currentAssistantMessageId) {
+          const updated = store.updateMessageById(currentAssistantMessageId, {
+            content: fullText || '',
+            tool_call_requests: formattedToolCalls,
+            isStreaming: false
+          })
+
+          if (!updated) {
+            console.error('[useStreamingChat] Failed to update assistant message with tool_calls, ID:', currentAssistantMessageId)
+          }
+        } else {
+          console.error('[useStreamingChat] No assistant message ID tracked, cannot update with tool_calls')
         }
 
-        // Execute tool calls
-        // Add assistant message with tool calls to conversation AND store (so it persists for next turn)
-        const assistantMessageWithToolCalls = {
-          role: 'assistant' as const,
+        // Add assistant message with tool_calls to conversation for API (next turn)
+        const assistantMessageForAPI: APIMessage = {
+          role: 'assistant',
           content: fullText || '',
-          tool_calls: toolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: {
-              name: tc.function.name,
-              arguments: tc.function.arguments
-            }
-          }))
-        };
-
-        conversationMessages.push(assistantMessageWithToolCalls as any)
-
-        // Note: The assistant message already exists in the store (created at line 148)
-        // and was updated with tool_call_requests at line 377-397.
-        // No need to add it again - this would create a duplicate!
+          tool_calls: formattedToolCalls
+        }
+        conversationMessages.push(assistantMessageForAPI)
 
         // Execute each tool call
-        const toolResults = []
+        const toolResults: APIMessage[] = []
         for (const toolCall of toolCalls) {
           const startTime = performance.now()
 
@@ -424,7 +397,7 @@ export function useStreamingChat(
             const [serverId, ...toolNameParts] = toolCall.function.name.split('__')
             const toolName = toolNameParts.join('__')
 
-            let args: any = {}
+            let args: Record<string, unknown> = {}
             try {
               args = JSON.parse(toolCall.function.arguments)
             } catch (e) {
@@ -432,7 +405,7 @@ export function useStreamingChat(
               throw new Error('Invalid tool arguments')
             }
 
-            // Add tool call to store
+            // Add tool call to store (for UI display)
             store.addToolCall({
               id: toolCall.id,
               toolName: toolCall.function.name,
@@ -451,7 +424,7 @@ export function useStreamingChat(
               role: 'tool',
               tool_call_id: toolCall.id,
               content: typeof result === 'string' ? result : JSON.stringify(result)
-            } as any)
+            })
           } catch (error) {
             const endTime = performance.now()
             console.error('[useStreamingChat] Tool call error:', error)
@@ -463,23 +436,24 @@ export function useStreamingChat(
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify({ error: errorMessage })
-            } as any)
+            })
           }
         }
 
-        // Add tool results to conversation
-        conversationMessages.push(...toolResults as any)
+        // Add tool results to conversation for API
+        conversationMessages.push(...toolResults)
 
-        // ✅ Add tool result messages to store AFTER assistant message (maintains proper order)
+        // Add tool result messages to store (maintains proper order after assistant message)
         for (const toolResult of toolResults) {
           store.addMessage({
             role: 'tool',
-            content: toolResult.content,
+            content: toolResult.content || '',
             tool_call_id: toolResult.tool_call_id
           })
         }
 
-        // Add new assistant message for next turn (so updateLastMessage doesn't overwrite tool messages)
+        // Create new assistant message for next turn
+        // The ID will be tracked at the start of the next iteration
         store.addMessage({
           role: 'assistant',
           content: '',
