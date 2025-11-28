@@ -41,7 +41,7 @@ export function importFromClaudeDesktop(config: ClaudeDesktopConfig): MCPServer[
       env: serverConfig.env || {},
       requiresAuth: false,
       authType: 'none',
-      status: 'idle',
+      status: 'IDLE',
       category: 'other', // Could be inferred from server name or package
       description: `Imported from Claude Desktop`,
     }
@@ -334,7 +334,7 @@ export function importSingleServer(jsonStr: string): MCPServer | null {
       env,
       requiresAuth: requiresOAuth,
       authType: requiresOAuth ? 'oauth' : 'none',
-      status: 'idle',
+      status: 'IDLE',
       category: inferCategory(packageName),
     }
 
@@ -441,7 +441,7 @@ export async function importFromClaudeDesktopAsync(config: ClaudeDesktopConfig):
       env: serverConfig.env || {},
       requiresAuth: false,
       authType: 'none',
-      status: 'idle',
+      status: 'IDLE',
       category: 'other',
       description: `Imported from Claude Desktop`,
     }

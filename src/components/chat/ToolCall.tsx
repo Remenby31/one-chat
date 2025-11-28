@@ -1,4 +1,5 @@
-import { FC, useState, useMemo } from 'react'
+import type { FC } from 'react'
+import { useState, useMemo } from 'react'
 import {
   CheckCircle2,
   XCircle,
@@ -7,14 +8,14 @@ import {
 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { formatForDisplay, getParamsPreview } from '@/lib/syntaxHighlight'
+import { getParamsPreview } from '@/lib/syntaxHighlight'
 import { cn } from '@/lib/utils'
 import { m, LazyMotion, domAnimation } from 'motion/react'
 import type { ToolCall } from '@/lib/chatStore'
-
-interface ToolCallState {
-  status: 'running' | 'success' | 'error'
-}
+import { parseToolName } from '@/lib/toolCallUtils'
+import { useToolCallStatus } from '@/hooks/useToolCallStatus'
+import { useDarkMode } from '@/hooks/useDarkMode'
+import { ToolCallResult } from './ToolCallResult'
 
 interface ToolCallProps {
   toolCall: ToolCall
@@ -24,55 +25,17 @@ export const ToolCallDisplay: FC<ToolCallProps> = ({ toolCall }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState<'params' | 'result'>('result')
 
-  // Determine state
-  const state = useMemo((): ToolCallState => {
-    if (toolCall.result === undefined) {
-      return { status: 'running' }
-    }
+  // Use custom hooks for state management
+  const status = useToolCallStatus(toolCall)
+  const isDark = useDarkMode()
 
-    // Check if result is an error
-    if (
-      typeof toolCall.result === 'object' &&
-      toolCall.result !== null &&
-      'error' in toolCall.result
-    ) {
-      return { status: 'error' }
-    }
-
-    return { status: 'success' }
-  }, [toolCall.result])
-
-  // Parse server and tool name (format: serverId__toolName)
-  const { serverId, displayToolName } = useMemo(() => {
-    const parts = toolCall.toolName.split('__')
-    if (parts.length >= 2) {
-      return {
-        serverId: parts[0],
-        displayToolName: parts.slice(1).join('__'),
-      }
-    }
-    return {
-      serverId: 'unknown',
-      displayToolName: toolCall.toolName,
-    }
-  }, [toolCall.toolName])
-
-  // Get appropriate theme (detect from document)
-  const isDark = useMemo(() => {
-    if (typeof document !== 'undefined') {
-      return document.documentElement.classList.contains('dark')
-    }
-    return true
-  }, [])
+  // Parse server and tool name using utility function
+  const { toolName: displayToolName } = useMemo(
+    () => parseToolName(toolCall.toolName),
+    [toolCall.toolName]
+  )
 
   const syntaxTheme = isDark ? oneDark : oneLight
-
-  // Format result for display
-  const formattedResult = useMemo(() => {
-    return toolCall.result !== undefined
-      ? formatForDisplay(toolCall.result)
-      : ''
-  }, [toolCall.result])
 
   // Get preview text
   const paramsPreview = useMemo(
@@ -98,13 +61,13 @@ export const ToolCallDisplay: FC<ToolCallProps> = ({ toolCall }) => {
         >
           {/* Status Icon */}
           <div className="shrink-0">
-            {state.status === 'running' && (
+            {status.status === 'running' && (
               <Loader2 className="size-3 text-muted-foreground/50 animate-spin" />
             )}
-            {state.status === 'success' && (
+            {status.status === 'success' && (
               <CheckCircle2 className="size-3 text-muted-foreground/50" />
             )}
-            {state.status === 'error' && (
+            {status.status === 'error' && (
               <XCircle className="size-3 text-muted-foreground/50" />
             )}
           </div>
@@ -213,65 +176,7 @@ export const ToolCallDisplay: FC<ToolCallProps> = ({ toolCall }) => {
                 </m.div>
               )}
 
-              {activeTab === 'result' && (
-                <m.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.15 }}
-                  className="space-y-2"
-                >
-                  {toolCall.result === undefined ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground/70 p-2.5 rounded-md bg-white/3">
-                      <Loader2 className="size-3 animate-spin" />
-                      <span>Executing...</span>
-                    </div>
-                  ) : state.status === 'error' ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground/70 p-2.5 rounded-md bg-white/3 border border-white/5">
-                        <XCircle className="size-3" />
-                        <span>Execution failed</span>
-                      </div>
-                      <div className="rounded-md overflow-hidden border border-white/5">
-                        <SyntaxHighlighter
-                          language="json"
-                          style={syntaxTheme}
-                          customStyle={{
-                            margin: 0,
-                            padding: '10px',
-                            fontSize: '10px',
-                            lineHeight: '1.5',
-                            background: isDark
-                              ? 'rgba(40, 42, 54, 0.3)'
-                              : 'rgba(250, 250, 250, 0.3)',
-                          }}
-                          wrapLongLines
-                        >
-                          {formattedResult}
-                        </SyntaxHighlighter>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-md overflow-hidden border border-white/5">
-                      <SyntaxHighlighter
-                        language="json"
-                        style={syntaxTheme}
-                        customStyle={{
-                          margin: 0,
-                          padding: '10px',
-                          fontSize: '10px',
-                          lineHeight: '1.5',
-                          background: isDark
-                            ? 'rgba(40, 42, 54, 0.3)'
-                            : 'rgba(250, 250, 250, 0.3)',
-                        }}
-                        wrapLongLines
-                      >
-                        {formattedResult}
-                      </SyntaxHighlighter>
-                    </div>
-                  )}
-                </m.div>
-              )}
+              {activeTab === 'result' && <ToolCallResult toolCall={toolCall} />}
             </div>
           </m.div>
         )}

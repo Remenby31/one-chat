@@ -10,12 +10,11 @@ import { stateMachineManager } from '@/lib/mcpStateMachine'
 export class MCPManager {
   // Legacy compatibility - now delegates to state machines
   private statusCallbacks: Set<(serverId: string, status: MCPServerState, metadata: MCPStateMetadata) => void> = new Set()
-  private exitListenerCleanup?: () => void
 
   constructor() {
     // Listen for process exit events from Electron
     if (window.electronAPI?.onMcpServerExited) {
-      this.exitListenerCleanup = window.electronAPI.onMcpServerExited(async ({ serverId, exitCode }) => {
+      window.electronAPI.onMcpServerExited(async ({ serverId, exitCode }) => {
         const machine = stateMachineManager.getMachine(serverId)
         const currentState = machine.getState()
 

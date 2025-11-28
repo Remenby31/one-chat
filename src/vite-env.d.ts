@@ -3,6 +3,7 @@
 interface ElectronAPI {
   getVersion: () => Promise<string>
   getAppRoot: () => Promise<string>
+  getUserDataPath: () => Promise<string>
   readConfig: (filename: string) => Promise<any>
   writeConfig: (filename: string, data: any) => Promise<boolean>
   exportConfig: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>

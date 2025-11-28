@@ -48,14 +48,31 @@ Ajouter dans `claude_desktop_config.json`:
 
 ### Créer une note
 ```
-Utilise memory_create pour créer une note "Ma première note" avec le contenu "Ceci est un test"
+Utilise memory_create pour créer une note avec title: "Ma première note" et content: "Ceci est un test"
 ```
 La note est créée librement. Ajoute `[[root-memory]]` ou une autre référence dans le contenu pour la connecter au graphe.
 
+### Référencer les notes (Wikilinks)
+
+**Le titre d'une note = le nom du fichier (sans .md)**
+
+Pour lier des notes, utilise la syntaxe `[[Titre]]`:
+
+**Exemples**:
+- Note dans la racine: `[[Ma première note]]` → fichier: `Ma première note.md`
+- Note dans un dossier: `[[Note dans Projects]]` → fichier: `Projects/Note dans Projects.md`
+- Avec chemin complet: `[[Projects/Note dans Projects]]` → même résultat
+- Avec alias personnalisé: `[[mon-alias]]` → si la note a `aliases: [mon-alias]` en frontmatter
+- Avec label d'affichage: `[[Ma première note|voir ma note]]` → affiche "voir ma note", pointe vers "Ma première note"
+
 ### Lire une note
 ```
-Utilise memory_read pour lire la note "Ma première note"
+Utilise memory_read avec identifier: "Ma première note"
 ```
+L'identifier peut être:
+- Le titre: `"Ma première note"`
+- Le chemin: `"Projects/Ma première note"`
+- Un alias: `"mon-alias"`
 
 ### Rechercher des notes
 ```
@@ -72,10 +89,37 @@ Ou lors de la création:
 memory_create avec title: "Note B" et content: "Contenu lié à [[Note A]]"
 ```
 
+### Créer des dossiers
+Passe le paramètre `folder` à `memory_create` ou `memory_upsert`:
+```
+memory_create avec title: "Mon projet", folder: "Projects", content: "..."
+```
+Crée: `Projects/Mon projet.md`
+
 ### Upsert (créer ou mettre à jour)
 ```
 Utilise memory_upsert pour créer ou mettre à jour une note en une seule opération
 ```
+
+### Overrider le titre (optionnel)
+Ajoute `title` dans le frontmatter pour utiliser un titre différent du nom du fichier:
+```yaml
+---
+title: "Mon titre personnalisé"
+---
+```
+Référence via: `[[Mon titre personnalisé]]` (pas via le nom du fichier)
+
+### Caractères spéciaux dans les noms
+
+Les caractères spéciaux `< > : " / \ | ? *` ne sont pas valides dans les noms de fichiers (Windows/Linux/macOS).
+
+Le système **remplace automatiquement** ces caractères par des tirets `-`:
+- Titre: `"Profil utilisateur: Baptiste Cruvellier"`
+- Fichier créé: `Profil utilisateur- Baptiste Cruvellier.md`
+- Le titre d'affichage reste inchangé dans le système
+
+Tu peux toujours référencer la note par son titre original: `[[Profil utilisateur: Baptiste Cruvellier]]`
 
 ## Structure du Vault
 

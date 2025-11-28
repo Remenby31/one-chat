@@ -237,7 +237,7 @@ function App() {
 
   // Handle OAuth callbacks from custom protocol
   useOAuthCallback(
-    async (serverId, oauthConfig) => {
+    async (serverId, _oauthConfig) => {
       // Reload MCP servers to get updated tokens
       if (window.electronAPI) {
         const updatedServers = await window.electronAPI.readConfig('mcpServers.json')
@@ -346,7 +346,7 @@ function App() {
     }
 
     // Load messages for selected thread
-    const { messages, systemPrompt } = await threadStore.switchThread(threadId)
+    const { messages } = await threadStore.switchThread(threadId)
     chatStore.loadMessages(messages)
     // System prompt is already set in threadStore by switchThread
   }

@@ -30,11 +30,6 @@ export function MCPToolsList({ server }: MCPToolsListProps) {
     return Object.keys(tool.inputSchema.properties || {}).length
   }
 
-  // Get required parameter count
-  const getRequiredParamCount = (tool: MCPTool): number => {
-    return tool.inputSchema.required?.length || 0
-  }
-
   if (server.status !== 'RUNNING') {
     return (
       <div className="flex items-center justify-center h-full">

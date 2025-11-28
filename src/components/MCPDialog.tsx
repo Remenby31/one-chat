@@ -15,7 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { CheckCircle2, ExternalLink, AlertCircle, ShieldAlert, ShieldCheck, Plus, Save, ChevronRight, ChevronLeft, HelpCircle } from "lucide-react"
+import { CheckCircle2, AlertCircle, ShieldAlert, ShieldCheck, Plus, Save, ChevronRight, ChevronLeft, HelpCircle } from "lucide-react"
 import type { MCPServer } from "@/types/mcp"
 import { startOAuthFlow } from "@/lib/mcpAuth"
 import { importSingleServerAsync } from "@/lib/mcpConfigAdapter"

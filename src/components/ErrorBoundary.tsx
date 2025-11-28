@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo)
     // Show error toast notification
-    showReactErrorToast(error, errorInfo)
+    showReactErrorToast(error, { componentStack: errorInfo.componentStack ?? undefined })
   }
 
   public render() {

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Trash2, Activity, Plug2, Circle, LoaderCircle, AlertCircle, ShieldAlert, ShieldX, CheckCircle, XCircle } from "lucide-react"
+import { Trash2, Activity, Plug2, Circle, LoaderCircle, ShieldAlert, ShieldX, CheckCircle, XCircle } from "lucide-react"
 import type { MCPServer } from "@/types/mcp"
 import { STATE_UI_CONFIG, ACTIVE_STATES, ATTENTION_REQUIRED_STATES } from "@/types/mcpState"
 import { cn } from "@/lib/utils"

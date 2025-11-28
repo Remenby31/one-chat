@@ -5,6 +5,7 @@ import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { ToolCallDisplay } from '@/components/chat/ToolCall'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
 import type { ChatMessage } from '@/lib/chatStore'
+import { convertToolCallRequestToToolCall } from '@/lib/toolCallUtils'
 
 interface AssistantMessageProps {
   message: ChatMessage
@@ -36,42 +37,28 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
     }
   }
 
-  // Check if we should show tool calls
-  const hasToolCalls = (message.toolCalls && message.toolCalls.length > 0)
-  const hasToolRequests = (message.tool_call_requests && message.tool_call_requests.length > 0)
+  // Determine which tool calls to display (real-time or persisted)
+  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
+  const hasToolRequests = message.tool_call_requests && message.tool_call_requests.length > 0
+
+  // Convert tool_call_requests to ToolCall format if needed
+  const displayToolCalls = hasToolRequests
+    ? message.tool_call_requests!.map((request) =>
+        convertToolCallRequestToToolCall(request, toolResults[request.id])
+      )
+    : message.toolCalls
 
   return (
     <div
       className="relative mx-auto w-full max-w-[var(--thread-max-width)] animate-in py-4 duration-200 fade-in slide-in-from-bottom-1 last:mb-24"
       data-role="assistant"
     >
-      {/* Tool calls (rendered outside bubble) - from toolCalls (real-time) */}
-      {hasToolCalls && (
+      {/* Tool calls (rendered outside bubble) */}
+      {(hasToolCalls || hasToolRequests) && displayToolCalls && (
         <div className="mx-2 mb-3">
-          {message.toolCalls!.map((toolCall) => (
+          {displayToolCalls.map((toolCall) => (
             <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
           ))}
-        </div>
-      )}
-
-      {/* Tool call requests (rendered outside bubble) - from saved tool_call_requests */}
-      {!hasToolCalls && hasToolRequests && (
-        <div className="mx-2 mb-3">
-          {message.tool_call_requests!.map((request) => {
-            // Convert tool_call_request to ToolCall format for display
-            // Include the result from toolResults if available
-            const result = toolResults[request.id]
-            const toolCall = {
-              id: request.id,
-              toolName: request.function.name,
-              args: JSON.parse(request.function.arguments || '{}'),
-              result: result ? (result.startsWith('{') || result.startsWith('[') ? JSON.parse(result) : result) : undefined,
-              startTime: undefined,
-              endTime: undefined,
-              duration: undefined,
-            }
-            return <ToolCallDisplay key={request.id} toolCall={toolCall} />
-          })}
         </div>
       )}
 

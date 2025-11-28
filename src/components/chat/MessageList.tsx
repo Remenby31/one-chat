@@ -5,6 +5,7 @@ import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import type { ChatMessage } from '@/lib/chatStore'
+import { getToolResultsForMessage } from '@/lib/toolCallUtils'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -63,19 +64,10 @@ export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) =>
       {/* Messages */}
       {messages.map((message, index) => {
         // For assistant messages, collect tool results from subsequent tool messages
-        const toolResults: Record<string, string> = {}
-        if (message.role === 'assistant' && message.tool_call_requests) {
-          // Look ahead for tool messages
-          for (let i = index + 1; i < messages.length; i++) {
-            const nextMsg = messages[i]
-            if (nextMsg.role === 'tool' && nextMsg.tool_call_id) {
-              toolResults[nextMsg.tool_call_id] = nextMsg.content
-            } else if (nextMsg.role !== 'tool') {
-              // Stop when we hit a non-tool message
-              break
-            }
-          }
-        }
+        const toolResults =
+          message.role === 'assistant' && message.tool_call_requests
+            ? getToolResultsForMessage(messages, index)
+            : {}
 
         return (
           <div key={message.id}>

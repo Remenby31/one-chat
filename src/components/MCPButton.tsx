@@ -11,7 +11,7 @@ interface MCPButtonProps {
 
 export function MCPButton({ servers, onSettingsClick }: MCPButtonProps) {
   // Count active servers
-  const activeServersCount = servers.filter(s => s.enabled && s.status === 'running').length
+  const activeServersCount = servers.filter(s => s.enabled && s.status === 'RUNNING').length
 
   return (
     <TooltipIconButton

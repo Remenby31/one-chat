@@ -74,7 +74,7 @@ export const ChatThread: FC<ChatThreadProps> = ({
   onSettingsClick,
   opacity = 1,
 }) => {
-  const { messages, isGenerating, sendMessage, stopGeneration, clearChat } =
+  const { messages, isGenerating, sendMessage, stopGeneration } =
     useStreamingChat(modelConfig, mcpServers)
 
   const isEmpty = messages.length === 0

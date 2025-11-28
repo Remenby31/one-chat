@@ -16,13 +16,11 @@ export function useMCPLogs(serverId?: string) {
     setIsLoading(true)
     try {
       const result = await window.electronAPI.mcpGetLogs(serverIdToLoad)
-      if (result.success && result.logs) {
-        setLogs(prev => {
-          const next = new Map(prev)
-          next.set(serverIdToLoad, result.logs)
-          return next
-        })
-      }
+      setLogs(prev => {
+        const next = new Map(prev)
+        next.set(serverIdToLoad, result)
+        return next
+      })
     } catch (error) {
       console.error('[useMCPLogs] Failed to load logs:', error)
     } finally {
@@ -35,14 +33,12 @@ export function useMCPLogs(serverId?: string) {
     if (!window.electronAPI?.mcpClearLogs) return
 
     try {
-      const result = await window.electronAPI.mcpClearLogs(serverIdToClear)
-      if (result.success) {
-        setLogs(prev => {
-          const next = new Map(prev)
-          next.set(serverIdToClear, [])
-          return next
-        })
-      }
+      await window.electronAPI.mcpClearLogs(serverIdToClear)
+      setLogs(prev => {
+        const next = new Map(prev)
+        next.set(serverIdToClear, [])
+        return next
+      })
     } catch (error) {
       console.error('[useMCPLogs] Failed to clear logs:', error)
     }

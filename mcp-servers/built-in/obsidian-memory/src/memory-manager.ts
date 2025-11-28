@@ -17,7 +17,8 @@ import {
   generateNoteId,
   parseMarkdownFile,
   writeMarkdownFile,
-  formatDate
+  formatDate,
+  sanitizeFilename
 } from './utils.js';
 
 export class MemoryManager {
@@ -224,9 +225,11 @@ All notes should be accessible from this root note or connected through other no
     const noteId = generateNoteId();
     const now = new Date();
 
+    // Sanitize title for filesystem compatibility (remove invalid chars like : " < > etc)
+    const sanitizedTitle = sanitizeFilename(title);
     const notePath = folder
-      ? path.join(folder, `${title}.md`)
-      : `${title}.md`;
+      ? path.join(folder, `${sanitizedTitle}.md`)
+      : `${sanitizedTitle}.md`;
 
     const fullPath = path.join(this.config.vaultPath, notePath);
     const dir = path.dirname(fullPath);
@@ -234,9 +237,10 @@ All notes should be accessible from this root note or connected through other no
 
     const fullFrontmatter: NoteFrontmatter = {
       id: noteId,
+      title: title, // Store original title (before sanitization) to preserve display name
       created: formatDate(now),
       modified: formatDate(now),
-      ...frontmatter
+      ...frontmatter // Allow override if explicitly provided
     };
 
     await writeMarkdownFile(fullPath, content, fullFrontmatter);

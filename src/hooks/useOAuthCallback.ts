@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { handleOAuthCallback } from '@/lib/mcpAuth'
 
 // Global flag to prevent duplicate callback processing
@@ -19,8 +19,6 @@ export function useOAuthCallback(
   onSuccess: (serverId: string, oauthConfig: import('@/types/mcp').MCPOAuthConfig) => void,
   onError: (error: Error) => void
 ) {
-  const listenerIdRef = useRef(`listener-${Math.random().toString(36).substring(7)}`)
-
   useEffect(() => {
     // Only works in Electron environment
     if (!window.electronAPI?.onOAuthCallback) {

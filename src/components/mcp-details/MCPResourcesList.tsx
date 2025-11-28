@@ -4,7 +4,6 @@ import { Search, FileText, Link as LinkIcon } from "lucide-react"
 import type { MCPServer } from "@/types/mcp"
 import { useMCPDetails } from "@/lib/useMCPDetails"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
 
 interface MCPResourcesListProps {
   server: MCPServer

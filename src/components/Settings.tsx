@@ -79,7 +79,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
   const [loadingModels, setLoadingModels] = useState(false)
   const [openModelCombobox, setOpenModelCombobox] = useState(false)
   const [testingServers, setTestingServers] = useState<Set<string>>(new Set())
-  const { dialogState, showSuccess, showError, showWarning, closeDialog } = useMessageDialog()
+  const { dialogState, showSuccess, showError, closeDialog } = useMessageDialog()
 
   // Update active tab when defaultTab or dialog opens
   useEffect(() => {

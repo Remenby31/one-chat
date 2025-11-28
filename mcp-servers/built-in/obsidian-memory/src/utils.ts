@@ -41,6 +41,16 @@ export function normalizeNotePath(notePath: string): string {
   return notePath;
 }
 
+/**
+ * Sanitize filename for filesystem compatibility
+ * Removes or replaces invalid characters for Windows/Linux/macOS
+ * Invalid chars: < > : " / \ | ? *
+ */
+export function sanitizeFilename(filename: string): string {
+  // Replace invalid characters with a dash
+  return filename.replace(/[<>:"|?*\/\\]/g, '-');
+}
+
 export function generateNoteId(): string {
   return uuidv4();
 }

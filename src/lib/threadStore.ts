@@ -329,10 +329,9 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       // Convert ChatMessage to ThreadMessage format for titleGenerator
       const threadMessages = messages.map(msg => ({
         role: msg.role,
-        content: [{ type: 'text' as const, text: msg.content }],
+        content: msg.content,
         id: msg.id,
-        createdAt: new Date(msg.timestamp),
-        metadata: {}
+        timestamp: msg.timestamp,
       }))
 
       const newTitle = generateConversationTitle(threadMessages)

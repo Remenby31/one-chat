@@ -19,7 +19,7 @@ interface ModelSelectorProps {
   opacity?: number
 }
 
-export function ModelSelector({ models, currentModel, apiKeys, onModelChange, onAddModel, opacity = 1 }: ModelSelectorProps) {
+export function ModelSelector({ models, currentModel, apiKeys: _apiKeys, onModelChange, onAddModel, opacity = 1 }: ModelSelectorProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

@@ -262,8 +262,15 @@ export function useStreamingChat(
           requestBody.tools = openaiTools
         }
 
+        // Log raw JSON request for debugging
+        console.log(`📤 API Request #${turnCount}`, {
+          model: requestBody.model,
+          messageCount: requestBody.messages.length,
+          toolCount: requestBody.tools?.length || 0,
+          stream: requestBody.stream,
+        })
+        console.log('📋 Raw JSON Messages:', JSON.stringify(requestBody, null, 2))
 
-        const requestStartTime = performance.now()
         const response = await fetch(`${apiKey.baseURL}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -273,9 +280,6 @@ export function useStreamingChat(
           body: JSON.stringify(requestBody),
           signal: abortController.signal,
         })
-
-        const responseReceivedTime = performance.now()
-        const connectionTime = responseReceivedTime - requestStartTime
 
         if (!response.ok) {
           const errorText = await response.text()
@@ -297,11 +301,7 @@ export function useStreamingChat(
         let chunkCounter = 0
 
         while (true) {
-          // Measure time waiting for next chunk from network
-          const readStart = performance.now()
           const { done, value } = await reader.read()
-          const readEnd = performance.now()
-          const readTime = readEnd - readStart
 
           if (done) {
             break
@@ -323,10 +323,8 @@ export function useStreamingChat(
               }
 
               try {
-                const parseStart = performance.now()
                 const parsed = JSON.parse(data)
                 const delta = parsed.choices?.[0]?.delta
-                const parseEnd = performance.now()
 
                 // Handle text content
                 if (delta?.content) {
@@ -413,12 +411,9 @@ export function useStreamingChat(
 
         conversationMessages.push(assistantMessageWithToolCalls as any)
 
-        // ✅ Add the assistant message with tool_calls to store FIRST (critical for next turn)
-        store.addMessage({
-          role: 'assistant',
-          content: assistantMessageWithToolCalls.content,
-          tool_call_requests: assistantMessageWithToolCalls.tool_calls
-        })
+        // Note: The assistant message already exists in the store (created at line 148)
+        // and was updated with tool_call_requests at line 377-397.
+        // No need to add it again - this would create a duplicate!
 
         // Execute each tool call
         const toolResults = []
