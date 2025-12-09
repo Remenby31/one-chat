@@ -213,7 +213,7 @@ async function probeForOAuth(url: string): Promise<string | null> {
  *
  * Steps:
  * 1. Probe the MCP URL for OAuth requirement (check for 401 + www-authenticate)
- * 2. If OAuth required, fetch resource metadata from www-authenticate URL
+ * 2. If OAuth required, fetch resource metadata from www-authenticate URL OR try well-known endpoint
  * 3. Extract authorization server URLs from resource metadata
  * 4. Fetch authorization server metadata for each server
  * 5. Return discovered OAuth configuration
@@ -225,17 +225,28 @@ export async function discoverOAuthConfig(url: string): Promise<OAuthDiscoveryRe
   try {
 
     // Step 1: Probe for OAuth requirement
-    const resourceMetadataUrl = await probeForOAuth(url)
+    let resourceMetadataUrl = await probeForOAuth(url)
 
+    // If no resource_metadata in header, try constructing well-known URL directly
     if (!resourceMetadataUrl) {
-      return {
-        success: false,
-        error: 'Server does not advertise OAuth requirement via www-authenticate header'
-      }
+      // Extract base URL (remove path if any)
+      const urlObj = new URL(url)
+      const baseUrl = `${urlObj.protocol}//${urlObj.host}`
+      resourceMetadataUrl = `${baseUrl}/.well-known/oauth-protected-resource`
+
+      console.log('[OAuth Discovery] No resource_metadata in header, trying well-known URL:', resourceMetadataUrl)
     }
 
     // Step 2: Fetch resource metadata
-    const resourceMetadata = await fetchResourceMetadata(resourceMetadataUrl)
+    let resourceMetadata: ResourceMetadata
+    try {
+      resourceMetadata = await fetchResourceMetadata(resourceMetadataUrl)
+    } catch (error) {
+      return {
+        success: false,
+        error: 'Failed to fetch OAuth resource metadata. Server may not require OAuth or does not follow RFC 8414.'
+      }
+    }
 
     if (!resourceMetadata.authorization_servers || resourceMetadata.authorization_servers.length === 0) {
       return {
@@ -311,21 +322,3 @@ export async function discoverOAuthConfig(url: string): Promise<OAuthDiscoveryRe
   }
 }
 
-/**
- * Check if a URL looks like it might be an OAuth-protected MCP server
- * This is a heuristic check before doing full discovery
- */
-export function looksLikeOAuthServer(url: string): boolean {
-  const urlLower = url.toLowerCase()
-
-  // Known OAuth MCP server domains
-  const knownOAuthDomains = [
-    'mcp.stripe.com',
-    'mcp.supabase.com',
-    'oauth',
-    '/authorize',
-    '/token'
-  ]
-
-  return knownOAuthDomains.some(domain => urlLower.includes(domain))
-}

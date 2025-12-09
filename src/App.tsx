@@ -5,7 +5,6 @@ import { ChatThread } from '@/components/chat/ChatThread'
 import { Sidebar } from '@/components/Sidebar'
 import { Settings } from '@/components/Settings'
 import { ModelSelector } from '@/components/ModelSelector'
-import { FlickeringGrid } from '@/components/ui/flickering-grid'
 import type { ModelConfig } from '@/types/model'
 import type { ApiKey } from '@/types/apiKey'
 import type { MCPServer } from '@/types/mcp'
@@ -17,44 +16,6 @@ import { useChatStore } from '@/lib/chatStore'
 import { DEFAULT_SYSTEM_PROMPT } from '@/lib/defaultSystemPrompt'
 import { initializeBuiltInServers } from '@/lib/builtInServers'
 
-// ============================================
-// PARAMÈTRES DE LA GRILLE SCINTILLANTE ET UI
-// ============================================
-const GRID_CONFIG = {
-  // Taille de chaque carré en pixels (2-8 recommandé)
-  squareSize: 8,
-
-  // Espacement entre les carrés en pixels (3-12 recommandé)
-  gridGap: 10,
-
-  // Probabilité de scintillement par frame (0-1)
-  // Plus élevé = plus de carrés scintillent
-  flickerChance: 0.1,
-
-  // Vitesse d'apparition progressive des carrés (0.01-0.05 recommandé)
-  // Plus bas = apparition plus lente et douce
-  fadeInSpeed: 0.01,
-
-  // Vitesse de disparition des carrés (0.90-0.98 recommandé)
-  // Plus haut = disparition plus lente
-  fadeOutSpeed: 0.99,
-
-  // Configuration pour le thème CLAIR
-  light: {
-    color: "rgb(0, 0, 0)",  // Couleur des carrés (noir)
-    maxOpacity: 0.1,         // Opacité maximale (0-1, plus bas = plus subtil)
-  },
-
-  // Configuration pour le thème SOMBRE
-  dark: {
-    color: "rgb(255, 255, 255)",  // Couleur des carrés (blanc)
-    maxOpacity: 0.15,              // Opacité maximale (0-1, plus bas = plus subtil)
-  },
-
-  // Opacité des éléments UI (sidebar, dialogs) - 0-100
-  uiOpacity: 0.5,
-}
-// ============================================
 
 function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -353,63 +314,31 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div
-        className="flex h-screen overflow-hidden bg-background relative"
-        style={{ '--ui-opacity': `${GRID_CONFIG.uiOpacity}%` } as React.CSSProperties}
-      >
-        {/* Flickering grid background - light theme */}
-        <div className="fixed inset-0 dark:hidden pointer-events-none" style={{ zIndex: 0 }}>
-          <FlickeringGrid
-            squareSize={GRID_CONFIG.squareSize}
-            gridGap={GRID_CONFIG.gridGap}
-            flickerChance={GRID_CONFIG.flickerChance}
-            color={GRID_CONFIG.light.color}
-            maxOpacity={GRID_CONFIG.light.maxOpacity}
-            fadeInSpeed={GRID_CONFIG.fadeInSpeed}
-            fadeOutSpeed={GRID_CONFIG.fadeOutSpeed}
-          />
-        </div>
-
-        {/* Flickering grid background - dark theme */}
-        <div className="fixed inset-0 hidden dark:block pointer-events-none" style={{ zIndex: 0 }}>
-          <FlickeringGrid
-            squareSize={GRID_CONFIG.squareSize}
-            gridGap={GRID_CONFIG.gridGap}
-            flickerChance={GRID_CONFIG.flickerChance}
-            color={GRID_CONFIG.dark.color}
-            maxOpacity={GRID_CONFIG.dark.maxOpacity}
-            fadeInSpeed={GRID_CONFIG.fadeInSpeed}
-            fadeOutSpeed={GRID_CONFIG.fadeOutSpeed}
-          />
-        </div>
-
+      <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar
-          opacity={GRID_CONFIG.uiOpacity}
           onSettingsClick={() => openSettingsTab('models')}
           onNewChat={handleNewChat}
           onThreadSelect={handleThreadSelect}
           currentThreadId={threadStore.currentThreadId}
         />
 
-        <div className="flex-1 flex flex-col min-h-0 bg-transparent">
-          <div className="px-4 py-3 flex items-center justify-between bg-transparent">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="px-4 py-3 flex items-center justify-between">
             <ModelSelector
               models={models}
               currentModel={currentModel}
               apiKeys={apiKeys}
               onModelChange={handleModelChange}
               onAddModel={() => openSettingsTab('models')}
-              opacity={GRID_CONFIG.uiOpacity}
             />
           </div>
 
-          <div className="flex-1 flex flex-col min-h-0 bg-transparent">
+          <div className="flex-1 flex flex-col min-h-0">
             <ChatThread
               modelConfig={currentModel}
               mcpServers={mcpServers}
               onMcpToggle={handleMcpToggle}
               onSettingsClick={() => openSettingsTab('mcp')}
-              opacity={GRID_CONFIG.uiOpacity}
             />
           </div>
         </div>
@@ -419,7 +348,6 @@ function App() {
           onOpenChange={setIsSettingsOpen}
           onModelChange={handleModelChange}
           onModelsUpdate={handleModelsUpdate}
-          opacity={GRID_CONFIG.uiOpacity}
           defaultTab={settingsTab}
         />
       </div>

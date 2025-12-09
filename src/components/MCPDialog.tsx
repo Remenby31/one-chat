@@ -27,10 +27,9 @@ interface MCPDialogProps {
   onOpenChange: (open: boolean) => void
   server?: MCPServer | null
   onSave: (server: Omit<MCPServer, 'id' | 'status' | 'connectedAt'>) => void
-  opacity?: number
 }
 
-export function MCPDialog({ open, onOpenChange, server, onSave, opacity = 1 }: MCPDialogProps) {
+export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps) {
   const [setupMode, setSetupMode] = useState<'manual' | 'json'>('json')
   const [jsonInput, setJsonInput] = useState('')
   const [jsonError, setJsonError] = useState('')
@@ -65,6 +64,10 @@ export function MCPDialog({ open, onOpenChange, server, onSave, opacity = 1 }: M
     (serverId, oauthConfig) => {
       console.log('[MCPDialog] OAuth callback received:', { serverId, oauthConfig })
 
+      // Check if we should auto-save (from JSON import flow)
+      const shouldAutoSave = autoSaveAfterOAuth
+      console.log('[MCPDialog] Auto-save after OAuth:', shouldAutoSave)
+
       // Update formData with received tokens
       setFormData(prev => {
         const updated = {
@@ -78,30 +81,55 @@ export function MCPDialog({ open, onOpenChange, server, onSave, opacity = 1 }: M
           }
         }
 
-        // If we're in auto-save mode (from JSON import), save immediately
-        if (autoSaveAfterOAuth) {
-          const args = parseArgs(updated.argsText)
-          const env = parseEnv(updated.envText)
+        return updated
+      })
+
+      // Update parsedServer with tokens if it exists
+      if (parsedServer) {
+        setParsedServer({
+          ...parsedServer,
+          oauthConfig: {
+            ...parsedServer.oauthConfig!,
+            accessToken: oauthConfig.accessToken,
+            refreshToken: oauthConfig.refreshToken,
+            tokenExpiresAt: oauthConfig.tokenExpiresAt,
+          }
+        })
+      }
+
+      // Auto-save if flag was set
+      if (shouldAutoSave) {
+        console.log('[MCPDialog] Auto-saving server after OAuth...')
+
+        // Use current formData values
+        setFormData(prev => {
+          const args = parseArgs(prev.argsText)
+          const env = parseEnv(prev.envText)
 
           onSave({
-            name: updated.name,
-            command: updated.command,
+            name: prev.name,
+            command: prev.command,
             args,
             enabled: true,
-            requiresAuth: updated.requiresOAuth,
-            authType: updated.requiresOAuth ? 'oauth' : 'none',
+            requiresAuth: true,
+            authType: 'oauth',
             env,
-            oauthConfig: updated.requiresOAuth ? updated.oauthConfig : undefined,
+            oauthConfig: {
+              ...prev.oauthConfig,
+              accessToken: oauthConfig.accessToken,
+              refreshToken: oauthConfig.refreshToken,
+              tokenExpiresAt: oauthConfig.tokenExpiresAt,
+            },
           })
 
           onOpenChange(false)
           setAutoSaveAfterOAuth(false)
-        }
 
-        return updated
-      })
-
-      console.log('[MCPDialog] Form data updated with OAuth tokens')
+          return prev
+        })
+      } else {
+        console.log('[MCPDialog] OAuth complete, ready to add server')
+      }
     },
     (error) => {
       console.error('[MCPDialog] OAuth callback error:', error)
@@ -441,7 +469,6 @@ export function MCPDialog({ open, onOpenChange, server, onSave, opacity = 1 }: M
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-2xl max-h-[85vh] overflow-y-auto"
-        style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>{server ? 'Edit MCP Server' : 'Add MCP Server'}</DialogTitle>
@@ -458,7 +485,7 @@ export function MCPDialog({ open, onOpenChange, server, onSave, opacity = 1 }: M
                       id="jsonInput"
                       value={jsonInput}
                       onChange={(e) => handleJsonInputChange(e.target.value)}
-                      placeholder={`{\n  "mcpServers": {\n    "supabase": {\n      "type": "http",\n      "url": "https://mcp.supabase.com/mcp"\n    }\n  }\n}`}
+                      placeholder={`{\n  "mcpServers": {\n    "notion": {\n      "url": "https://mcp.notion.com/mcp"\n    }\n  }\n}`}
                       rows={8}
                       className="font-mono text-sm pr-10"
                     />
@@ -510,14 +537,13 @@ export function MCPDialog({ open, onOpenChange, server, onSave, opacity = 1 }: M
                               </div>
                               <div>
                                 <p className="text-muted-foreground mb-1">
-                                  <span className="font-medium">Supabase</span> - Base de données en ligne
+                                  <span className="font-medium">Notion</span> - Notes et documentation
                                 </p>
                                 <code className="block text-xs bg-muted/50 p-1.5 rounded">
                                   {`{
   "mcpServers": {
-    "supabase": {
-      "type": "http",
-      "url": "https://mcp.supabase.com/mcp"
+    "notion": {
+      "url": "https://mcp.notion.com/mcp"
     }
   }
 }`}

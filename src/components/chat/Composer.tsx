@@ -15,7 +15,6 @@ interface ComposerProps {
   mcpServers?: MCPServer[]
   onMcpToggle?: (id: string, enabled: boolean) => void
   onSettingsClick?: () => void
-  opacity?: number
 }
 
 export const Composer: FC<ComposerProps> = ({
@@ -26,7 +25,6 @@ export const Composer: FC<ComposerProps> = ({
   mcpServers = [],
   onMcpToggle,
   onSettingsClick,
-  opacity = 1,
 }) => {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -102,7 +100,6 @@ export const Composer: FC<ComposerProps> = ({
               servers={mcpServers}
               onToggle={onMcpToggle}
               onSettingsClick={onSettingsClick}
-              opacity={opacity}
             />
           )}
         </div>

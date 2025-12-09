@@ -18,7 +18,6 @@ interface MCPServerDetailsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onServerUpdate?: (server: MCPServer) => void
-  opacity?: number
 }
 
 export function MCPServerDetailsDialog({
@@ -26,7 +25,6 @@ export function MCPServerDetailsDialog({
   open,
   onOpenChange,
   onServerUpdate,
-  opacity = 1,
 }: MCPServerDetailsDialogProps) {
   const { tools, resources, prompts, isLoading } = useMCPDetails(server || undefined)
 
@@ -92,7 +90,6 @@ export function MCPServerDetailsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-5xl h-[85vh] flex flex-col p-0"
-        style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
       >
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b">

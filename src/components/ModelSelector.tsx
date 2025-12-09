@@ -16,10 +16,9 @@ interface ModelSelectorProps {
   apiKeys: ApiKey[]
   onModelChange: (model: ModelConfig) => void
   onAddModel: () => void
-  opacity?: number
 }
 
-export function ModelSelector({ models, currentModel, apiKeys: _apiKeys, onModelChange, onAddModel, opacity = 1 }: ModelSelectorProps) {
+export function ModelSelector({ models, currentModel, apiKeys: _apiKeys, onModelChange, onAddModel }: ModelSelectorProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -36,7 +35,6 @@ export function ModelSelector({ models, currentModel, apiKeys: _apiKeys, onModel
       <DropdownMenuContent
         align="start"
         className="w-[280px]"
-        style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
       >
         {models.length === 0 ? (
           <div className="px-2 py-1.5 text-sm text-muted-foreground">

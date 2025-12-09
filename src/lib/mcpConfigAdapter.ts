@@ -155,99 +155,6 @@ export function exportSingleServer(server: MCPServer): string {
   return JSON.stringify(config, null, 2)
 }
 
-/**
- * Detect if a server requires OAuth based on package name
- */
-export function detectOAuthRequirement(args: string[]): boolean {
-  const packageName = args.find(arg => arg.includes('@'))?.toLowerCase() || ''
-
-  // List of known packages that require OAuth
-  const oauthPackages = [
-    '@stripe/mcp',
-    '@supabase/mcp-server',
-    '@modelcontextprotocol/server-gdrive',
-    '@modelcontextprotocol/server-slack',
-  ]
-
-  return oauthPackages.some(pkg => packageName.includes(pkg))
-}
-
-/**
- * Detect if a HTTP server URL requires OAuth
- */
-export function detectOAuthFromUrl(url: string): boolean {
-  if (!url) return false
-
-  const urlLower = url.toLowerCase()
-
-  // List of known HTTP MCP servers that require OAuth
-  const oauthUrls = [
-    'mcp.stripe.com',
-    'mcp.supabase.com',
-  ]
-
-  return oauthUrls.some(domain => urlLower.includes(domain))
-}
-
-/**
- * Get OAuth configuration for known packages
- */
-export function getOAuthConfigFromPackage(args: string[]): import('@/types/mcp').MCPOAuthConfig | null {
-  const packageName = args.find(arg => arg.includes('@'))?.toLowerCase() || ''
-
-  const configs: Record<string, import('@/types/mcp').MCPOAuthConfig> = {
-    '@stripe/mcp': {
-      authUrl: 'https://mcp.stripe.com/authorize',
-      tokenUrl: 'https://mcp.stripe.com/oauth/token',
-      scopes: ['read_data'],
-    },
-    '@supabase/mcp-server': {
-      authUrl: 'https://supabase.com/dashboard/oauth/authorize',
-      scopes: ['all'],
-    },
-    '@modelcontextprotocol/server-gdrive': {
-      scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-    },
-    '@modelcontextprotocol/server-slack': {
-      scopes: ['chat:write', 'channels:read'],
-    },
-  }
-
-  for (const [pkg, config] of Object.entries(configs)) {
-    if (packageName.includes(pkg)) {
-      return config
-    }
-  }
-
-  return null
-}
-
-/**
- * Get OAuth configuration for known HTTP server URLs
- */
-export function getOAuthConfigFromUrl(url: string): import('@/types/mcp').MCPOAuthConfig | null {
-  if (!url) return null
-
-  const urlLower = url.toLowerCase()
-
-  // OAuth configs for known HTTP MCP servers
-  if (urlLower.includes('mcp.stripe.com')) {
-    return {
-      authUrl: 'https://mcp.stripe.com/authorize',
-      tokenUrl: 'https://mcp.stripe.com/oauth/token',
-      scopes: ['read_data'],
-    }
-  }
-
-  if (urlLower.includes('mcp.supabase.com')) {
-    return {
-      authUrl: 'https://supabase.com/dashboard/oauth/authorize',
-      scopes: ['all'],
-    }
-  }
-
-  return null
-}
 
 /**
  * Infer category from package name
@@ -273,11 +180,11 @@ function inferCategory(packageName: string): import('@/types/mcp').MCPServerCate
  * Supports multiple formats:
  * 1. Simple format: { "name": { "command": "...", "args": [...] } }
  * 2. Claude Desktop format: { "mcpServers": { "name": { "command": "...", "args": [...] } } }
- * 3. HTTP server format: { "mcpServers": { "name": { "type": "http", "url": "..." } } }
+ * 3. HTTP server format: { "mcpServers": { "name": { "url": "..." } } }
+ *    (type: "http" is optional, url alone is sufficient)
  *
- * Note: For HTTP servers, this function now attempts OAuth discovery automatically.
- * However, since this function is synchronous, discovery must be done separately.
- * Use importSingleServerAsync() for automatic OAuth discovery.
+ * Note: OAuth discovery is done asynchronously in importSingleServerAsync().
+ * This synchronous version returns the server without OAuth config.
  */
 export function importSingleServer(jsonStr: string): MCPServer | null {
   try {
@@ -304,27 +211,28 @@ export function importSingleServer(jsonStr: string): MCPServer | null {
     let command: string
     let args: string[]
     const env: Record<string, string> = server.env || {}
+    let isHttpServer = false
 
     // Handle different server types
-    if (server.type === 'http' && server.url) {
-      // HTTP/Remote MCP server - convert to local command using mcp-remote
+    if (server.url) {
+      // HTTP/Remote MCP server - url alone is sufficient (type: "http" is optional)
       command = 'npx'
       args = ['-y', 'mcp-remote', server.url]
+      isHttpServer = true
     } else if (server.command && Array.isArray(server.args)) {
       // Standard local server
       command = server.command
       args = server.args
+      // Check if it's using mcp-remote
+      isHttpServer = server.args.includes('mcp-remote')
     } else {
       // Invalid format
       return null
     }
 
     const packageName = args.find((arg: string) => arg.includes('@')) || ''
-    const serverUrl = server.type === 'http' ? server.url : ''
 
-    // Detect OAuth requirement from args or URL
-    const requiresOAuth = detectOAuthRequirement(args) || detectOAuthFromUrl(serverUrl)
-
+    // For HTTP servers, OAuth will be discovered async - don't set requiresAuth here
     const baseServer: MCPServer = {
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
       name,
@@ -332,24 +240,10 @@ export function importSingleServer(jsonStr: string): MCPServer | null {
       command,
       args,
       env,
-      requiresAuth: requiresOAuth,
-      authType: requiresOAuth ? 'oauth' : 'none',
+      requiresAuth: false,
+      authType: 'none',
       status: 'IDLE',
-      category: inferCategory(packageName),
-    }
-
-    // Auto-fill OAuth config if detected
-    if (requiresOAuth) {
-      let oauthConfig = getOAuthConfigFromPackage(args)
-
-      // If no config from package, try to get from URL (for HTTP servers)
-      if (!oauthConfig && serverUrl) {
-        oauthConfig = getOAuthConfigFromUrl(serverUrl)
-      }
-
-      if (oauthConfig) {
-        baseServer.oauthConfig = oauthConfig
-      }
+      category: isHttpServer ? 'api' : inferCategory(packageName),
     }
 
     return baseServer

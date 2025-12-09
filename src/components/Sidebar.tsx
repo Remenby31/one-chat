@@ -9,7 +9,6 @@ interface SidebarProps {
   onNewChat: () => void
   onThreadSelect: (threadId: string) => void
   currentThreadId: string | null
-  opacity?: number
 }
 
 export const Sidebar: FC<SidebarProps> = ({
@@ -17,17 +16,15 @@ export const Sidebar: FC<SidebarProps> = ({
   onNewChat,
   onThreadSelect,
   currentThreadId,
-  opacity = 95
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true)
 
   return (
     <div
       className={cn(
-        "flex flex-col h-full transition-all duration-300 ease-in-out",
+        "flex flex-col h-full transition-all duration-300 ease-in-out bg-background",
         isCollapsed ? "w-12 border-none" : "w-64 border-r"
       )}
-      style={!isCollapsed ? { backgroundColor: `hsl(var(--background) / ${opacity}%)` } : undefined}
     >
       <div className={cn(
         "flex items-center justify-between",

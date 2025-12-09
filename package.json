@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build && electron-builder",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron": "npx wait-on tcp:5173 && vite build --config electron.vite.config.ts && npx cross-env NODE_ENV=development electron .",
+    "electron": "npx wait-on http://localhost:5173 -t 30000 && vite build --config electron.vite.config.ts && npx cross-env NODE_ENV=development electron .",
     "electron:dev": "npx concurrently -k \"npm run dev\" \"npm run electron\"",
     "electron:build": "npm run build && electron-builder",
     "dist": "electron-builder",

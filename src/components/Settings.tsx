@@ -49,11 +49,10 @@ interface SettingsProps {
   onOpenChange: (open: boolean) => void
   onModelChange: (model: ModelConfig | null) => void
   onModelsUpdate?: () => void
-  opacity?: number
   defaultTab?: string
 }
 
-export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, opacity = 1, defaultTab = 'models' }: SettingsProps) {
+export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, defaultTab = 'models' }: SettingsProps) {
   const { theme, setTheme } = useTheme()
   const [activeTab, setActiveTab] = useState(defaultTab)
   const [models, setModels] = useState<ModelConfig[]>([])
@@ -604,7 +603,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-4xl h-[600px] overflow-hidden flex flex-col p-0"
-        style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>Settings</DialogTitle>
@@ -890,7 +888,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
       <Dialog open={showAddModelDialog} onOpenChange={setShowAddModelDialog}>
         <DialogContent
           className="max-w-2xl max-h-[90vh] overflow-y-auto"
-          style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
         >
           <div className="space-y-4 py-4">
             <FormField
@@ -1050,14 +1047,12 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
         }}
         server={editingMCPServer}
         onSave={editingMCPServer ? handleEditMcpServer : handleAddMcpServer}
-        opacity={opacity}
       />
 
       {/* Add Endpoint Dialog */}
       <Dialog open={showAddApiKeyDialog} onOpenChange={setShowAddApiKeyDialog}>
         <DialogContent
           className="max-w-md"
-          style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
         >
           <DialogHeader>
             <DialogTitle>Add New Endpoint</DialogTitle>
@@ -1148,7 +1143,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
         type={dialogState.type}
         title={dialogState.title}
         message={dialogState.message}
-        opacity={opacity}
       />
 
       {/* MCP Server Details Dialog */}
@@ -1157,7 +1151,6 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, op
         open={showMCPDetailsDialog}
         onOpenChange={setShowMCPDetailsDialog}
         onServerUpdate={handleUpdateMcpServer}
-        opacity={opacity}
       />
     </Dialog>
   )

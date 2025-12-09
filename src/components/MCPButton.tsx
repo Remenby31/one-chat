@@ -6,7 +6,6 @@ interface MCPButtonProps {
   servers: MCPServer[]
   onToggle: (id: string, enabled: boolean) => void
   onSettingsClick: () => void
-  opacity?: number
 }
 
 export function MCPButton({ servers, onSettingsClick }: MCPButtonProps) {

@@ -16,9 +16,11 @@ export function useMCPLogs(serverId?: string) {
     setIsLoading(true)
     try {
       const result = await window.electronAPI.mcpGetLogs(serverIdToLoad)
+      // Result is { success: boolean, logs?: MCPLogEntry[], error?: string }
+      const logsArray = result?.success && Array.isArray(result.logs) ? result.logs : []
       setLogs(prev => {
         const next = new Map(prev)
-        next.set(serverIdToLoad, result)
+        next.set(serverIdToLoad, logsArray)
         return next
       })
     } catch (error) {

@@ -17,7 +17,6 @@ interface MessageDialogProps {
   type: MessageType
   title: string
   message: string
-  opacity?: number
 }
 
 export function MessageDialog({
@@ -26,7 +25,6 @@ export function MessageDialog({
   type,
   title,
   message,
-  opacity = 1,
 }: MessageDialogProps) {
   const [copied, setCopied] = useState(false)
 
@@ -70,7 +68,6 @@ export function MessageDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-lg"
-        style={{ '--ui-opacity': `${opacity * 100}%` } as React.CSSProperties}
       >
         <DialogHeader>
           <DialogTitle className={`flex items-center gap-2 ${getHeaderColor()}`}>

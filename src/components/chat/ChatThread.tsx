@@ -13,7 +13,6 @@ interface ChatThreadProps {
   mcpServers?: MCPServer[]
   onMcpToggle?: (id: string, enabled: boolean) => void
   onSettingsClick?: () => void
-  opacity?: number
 }
 
 // Welcome suggestions (exact copy from thread.tsx)
@@ -72,7 +71,6 @@ export const ChatThread: FC<ChatThreadProps> = ({
   mcpServers = [],
   onMcpToggle,
   onSettingsClick,
-  opacity = 1,
 }) => {
   const { messages, isGenerating, sendMessage, stopGeneration } =
     useStreamingChat(modelConfig, mcpServers)
@@ -108,7 +106,6 @@ export const ChatThread: FC<ChatThreadProps> = ({
                 mcpServers={mcpServers}
                 onMcpToggle={onMcpToggle}
                 onSettingsClick={onSettingsClick}
-                opacity={opacity}
               />
             )}
 
@@ -127,7 +124,6 @@ export const ChatThread: FC<ChatThreadProps> = ({
                     mcpServers={mcpServers}
                     onMcpToggle={onMcpToggle}
                     onSettingsClick={onSettingsClick}
-                    opacity={opacity}
                   />
                 </div>
               </div>
