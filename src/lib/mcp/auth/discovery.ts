@@ -223,13 +223,52 @@ export async function registerClient(
  */
 export function mightRequireOAuth(url: string): boolean {
   const oauthPatterns = [
+    // Known MCP servers with OAuth
+    /mcp\.supabase\.com/i,
+    /mcp\.linear\.app/i,
+    /mcp\.notion\.com/i,
+    // General patterns
     /supabase\.(co|com)/i,
     /notion\.com/i,
+    /linear\.app/i,
     /github\.com/i,
     /googleapis\.com/i,
     /microsoft\.com/i,
     /azure\.com/i,
+    /slack\.com/i,
+    /atlassian\.(com|net)/i,
+    /jira\.com/i,
+    /confluence\.com/i,
+    /salesforce\.com/i,
   ]
 
   return oauthPatterns.some((pattern) => pattern.test(url))
+}
+
+/**
+ * Known MCP server URLs with their OAuth requirements
+ */
+export const KNOWN_MCP_SERVERS: Record<string, { requiresOAuth: boolean; name: string }> = {
+  'mcp.supabase.com': { requiresOAuth: true, name: 'Supabase' },
+  'mcp.linear.app': { requiresOAuth: true, name: 'Linear' },
+  'mcp.notion.com': { requiresOAuth: true, name: 'Notion' },
+}
+
+/**
+ * Check if a URL is a known MCP server
+ */
+export function isKnownMCPServer(url: string): { known: boolean; requiresOAuth?: boolean; name?: string } {
+  try {
+    const urlObj = new URL(url)
+    const host = urlObj.host.toLowerCase()
+    const serverInfo = KNOWN_MCP_SERVERS[host]
+
+    if (serverInfo) {
+      return { known: true, requiresOAuth: serverInfo.requiresOAuth, name: serverInfo.name }
+    }
+
+    return { known: false }
+  } catch {
+    return { known: false }
+  }
 }

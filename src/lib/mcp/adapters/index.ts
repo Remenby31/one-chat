@@ -15,3 +15,6 @@ export * from './electron'
 
 // Memory adapters (for testing)
 export * from './memory'
+
+// HTTP transport (for remote servers)
+export * from './http'

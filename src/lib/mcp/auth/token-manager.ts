@@ -25,6 +25,15 @@ const DEFAULT_OPTIONS: Required<TokenManagerOptions> = {
 }
 
 /**
+ * Token refresh scheduler for background refresh
+ */
+interface TokenRefreshSchedule {
+  serverId: string
+  timeoutId: ReturnType<typeof setTimeout>
+  scheduledAt: number
+}
+
+/**
  * Pending authentication promise
  */
 interface PendingAuth {
@@ -34,12 +43,18 @@ interface PendingAuth {
 }
 
 /**
+ * Token refresh callback type
+ */
+export type TokenRefreshCallback = (serverId: string, tokens: OAuthTokens) => void | Promise<void>
+
+/**
  * Token Manager class
  *
  * Handles OAuth token lifecycle including:
  * - Token validation and expiry checking
  * - Token refresh
  * - OAuth authorization flow
+ * - Background token refresh scheduling
  */
 export class TokenManager {
   private options: Required<TokenManagerOptions>
@@ -47,6 +62,8 @@ export class TokenManager {
   private protocolCleanup: (() => void) | null = null
   private storage: StorageAdapter
   private browser: BrowserAdapter
+  private refreshSchedules = new Map<string, TokenRefreshSchedule>()
+  private refreshCallbacks = new Set<TokenRefreshCallback>()
 
   constructor(
     storage: StorageAdapter,
@@ -56,6 +73,94 @@ export class TokenManager {
     this.storage = storage
     this.browser = browser
     this.options = { ...DEFAULT_OPTIONS, ...options }
+  }
+
+  /**
+   * Subscribe to token refresh events
+   * Called when a token is successfully refreshed in background
+   */
+  onTokenRefresh(callback: TokenRefreshCallback): () => void {
+    this.refreshCallbacks.add(callback)
+    return () => this.refreshCallbacks.delete(callback)
+  }
+
+  /**
+   * Schedule background token refresh for a server
+   * Will automatically refresh the token before it expires
+   */
+  scheduleBackgroundRefresh(server: MCPServer): void {
+    const auth = server.auth
+    if (!auth || auth.type !== 'oauth') return
+
+    const tokens = auth.tokens
+    if (!tokens?.expiresAt || !tokens.refreshToken) return
+
+    // Cancel existing schedule
+    this.cancelBackgroundRefresh(server.id)
+
+    const now = Date.now()
+    const refreshTime = tokens.expiresAt - this.options.refreshBuffer
+
+    // Don't schedule if already expired or too close
+    if (refreshTime <= now) return
+
+    const delay = refreshTime - now
+
+    const timeoutId = setTimeout(async () => {
+      this.refreshSchedules.delete(server.id)
+      await this.performBackgroundRefresh(server)
+    }, delay)
+
+    this.refreshSchedules.set(server.id, {
+      serverId: server.id,
+      timeoutId,
+      scheduledAt: refreshTime,
+    })
+  }
+
+  /**
+   * Cancel scheduled background refresh for a server
+   */
+  cancelBackgroundRefresh(serverId: string): void {
+    const schedule = this.refreshSchedules.get(serverId)
+    if (schedule) {
+      clearTimeout(schedule.timeoutId)
+      this.refreshSchedules.delete(serverId)
+    }
+  }
+
+  /**
+   * Perform background token refresh
+   */
+  private async performBackgroundRefresh(server: MCPServer): Promise<void> {
+    try {
+      const result = await this.refreshToken(server)
+      if (result.success && result.tokens) {
+        // Notify callbacks
+        for (const callback of this.refreshCallbacks) {
+          try {
+            await callback(server.id, result.tokens)
+          } catch {
+            // Ignore callback errors
+          }
+        }
+
+        // Re-schedule next refresh if we got a new expiry
+        if (result.tokens.expiresAt) {
+          // Create updated server config for re-scheduling
+          const updatedServer: MCPServer = {
+            ...server,
+            auth: {
+              ...(server.auth as MCPOAuthConfig),
+              tokens: result.tokens,
+            },
+          }
+          this.scheduleBackgroundRefresh(updatedServer)
+        }
+      }
+    } catch {
+      // Background refresh failed - will be handled on next ensureValidToken call
+    }
   }
 
   /**
@@ -353,11 +458,33 @@ export class TokenManager {
     })
     this.pendingAuth.clear()
 
+    // Clear all refresh schedules
+    this.refreshSchedules.forEach((schedule) => {
+      clearTimeout(schedule.timeoutId)
+    })
+    this.refreshSchedules.clear()
+    this.refreshCallbacks.clear()
+
     // Cleanup protocol handler
     if (this.protocolCleanup) {
       this.protocolCleanup()
       this.protocolCleanup = null
     }
+  }
+
+  /**
+   * Get scheduled refresh info for a server
+   */
+  getScheduledRefresh(serverId: string): { scheduledAt: number } | null {
+    const schedule = this.refreshSchedules.get(serverId)
+    return schedule ? { scheduledAt: schedule.scheduledAt } : null
+  }
+
+  /**
+   * Check if a server has a scheduled refresh
+   */
+  hasScheduledRefresh(serverId: string): boolean {
+    return this.refreshSchedules.has(serverId)
   }
 
   // ===========================================================================

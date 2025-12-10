@@ -4,19 +4,23 @@
  * Manages the lifecycle of a single MCP server.
  */
 
-import type { MCPServer, MCPStdioTransport } from '../core/types'
+import type { MCPServer, MCPStdioTransport, MCPHttpTransport } from '../core/types'
 import type { ProcessAdapter, LoggerAdapter } from '../adapters/types'
 import type { TokenManager } from '../auth/token-manager'
 import type { MCPServerInstance, MCPServerStartOptions, MCPServerStopOptions } from './types'
 import { MCPError, MCPProcessError, MCPErrorCode } from '../core/errors'
 import { canStart, canStop } from '../core/state'
+import { HttpProcessAdapter } from '../adapters/http'
 
 /**
  * Server manager options
  */
 export interface ServerManagerOptions {
-  /** Process adapter */
+  /** Process adapter for stdio transport */
   processAdapter: ProcessAdapter
+
+  /** HTTP adapter for HTTP transport (optional, created internally if not provided) */
+  httpAdapter?: HttpProcessAdapter
 
   /** Token manager (optional, for OAuth servers) */
   tokenManager?: TokenManager
@@ -33,12 +37,14 @@ export interface ServerManagerOptions {
  */
 export class ServerManager {
   private readonly processAdapter: ProcessAdapter
+  private readonly httpAdapter: HttpProcessAdapter
   private readonly tokenManager?: TokenManager
   private readonly logger?: LoggerAdapter
   private readonly shutdownTimeout: number
 
   constructor(options: ServerManagerOptions) {
     this.processAdapter = options.processAdapter
+    this.httpAdapter = options.httpAdapter ?? new HttpProcessAdapter()
     this.tokenManager = options.tokenManager
     this.logger = options.logger
     this.shutdownTimeout = options.shutdownTimeout ?? 5000
@@ -109,10 +115,10 @@ export class ServerManager {
       // Validation passed, start the server
       await stateMachine.transition('VALID')
       await stateMachine.transition('START')
-      log?.info('Starting server process')
+      log?.info('Starting server')
 
-      // Spawn the process
       if (config.transport.type === 'stdio') {
+        // Spawn local process for stdio transport
         instance.process = await this.processAdapter.spawn(config.id, config.transport)
 
         // Set up exit handler
@@ -137,10 +143,50 @@ export class ServerManager {
           connectedAt: Date.now(),
         })
         log?.info('Server started successfully')
+      } else if (config.transport.type === 'http') {
+        // Connect to remote HTTP server
+        const httpTransport = config.transport as MCPHttpTransport
+
+        // Get OAuth token if available
+        let accessToken: string | undefined
+        if (config.auth?.type === 'oauth' && config.auth.tokens?.accessToken) {
+          accessToken = config.auth.tokens.accessToken
+        } else if (config.auth?.type === 'token') {
+          accessToken = config.auth.token
+        }
+
+        // Connect via HTTP adapter
+        instance.process = await this.httpAdapter.connect(
+          config.id,
+          httpTransport,
+          accessToken
+        )
+
+        // Set up exit handler
+        instance.process.onExit((code) => {
+          log?.info(`HTTP connection closed with code ${code}`)
+          instance.process = null
+
+          if (code !== 0 && code !== null) {
+            stateMachine.transition('CRASHED', { exitCode: code }).catch(() => {})
+          } else {
+            stateMachine.transition('STOPPED').catch(() => {})
+          }
+        })
+
+        // Set up stderr handler for logging
+        instance.process.onStderr((data) => {
+          log?.debug(`http error: ${data}`)
+        })
+
+        // Server connected successfully
+        await stateMachine.transition('STARTED', {
+          connectedAt: Date.now(),
+        })
+        log?.info('HTTP server connected successfully')
       } else {
-        // HTTP transport - not yet implemented
         throw new MCPError(
-          'HTTP transport not yet supported',
+          `Unknown transport type: ${(config.transport as { type: string }).type}`,
           MCPErrorCode.INVALID_TRANSPORT,
           { serverId: config.id }
         )

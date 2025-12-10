@@ -1,7 +1,7 @@
 /**
  * MCP Manager Module
  *
- * Exports registry and server manager.
+ * Exports registry, server manager, and supervisor.
  */
 
 // Types
@@ -12,3 +12,6 @@ export { ServerManager } from './server-manager'
 
 // Registry
 export { MCPRegistry } from './registry'
+
+// Supervisor (auto-restart + health checks)
+export * from './supervisor'
