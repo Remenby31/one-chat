@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { handleOAuthCallback } from '@/lib/mcpAuth'
+import type { MCPOAuthConfig } from '@/types/mcp'
 
 // Global flag to prevent duplicate callback processing
 const processingCallbacks = new Set<string>()
@@ -12,12 +12,14 @@ const processingCallbacks = new Set<string>()
  *
  * This hook listens for those redirects and processes them automatically.
  *
- * @param onSuccess - Callback when OAuth flow completes successfully, receives serverId and oauthConfig
+ * @param onSuccess - Callback when OAuth flow completes successfully, receives serverId and tokens
  * @param onError - Callback when OAuth flow fails
+ * @param oauthConfig - OAuth configuration for token exchange
  */
 export function useOAuthCallback(
-  onSuccess: (serverId: string, oauthConfig: import('@/types/mcp').MCPOAuthConfig) => void,
-  onError: (error: Error) => void
+  onSuccess: (serverId: string, oauthConfig: MCPOAuthConfig) => void,
+  onError: (error: Error) => void,
+  oauthConfig?: MCPOAuthConfig
 ) {
   useEffect(() => {
     // Only works in Electron environment
@@ -35,9 +37,49 @@ export function useOAuthCallback(
       processingCallbacks.add(url)
 
       try {
-        // Process the OAuth callback
-        const { serverId, oauthConfig } = await handleOAuthCallback(url)
-        onSuccess(serverId, oauthConfig)
+        // Parse the callback URL
+        const callbackUrl = new URL(url)
+        const code = callbackUrl.searchParams.get('code')
+        const state = callbackUrl.searchParams.get('state')
+        const error = callbackUrl.searchParams.get('error')
+        const errorDescription = callbackUrl.searchParams.get('error_description')
+
+        // Check for OAuth errors
+        if (error) {
+          throw new Error(`OAuth error: ${errorDescription || error}`)
+        }
+
+        if (!code || !state) {
+          throw new Error('Invalid OAuth callback: missing code or state')
+        }
+
+        // Exchange the code for tokens via IPC
+        if (!window.electronAPI?.mcpExchangeOAuthCode) {
+          throw new Error('OAuth functionality requires Electron')
+        }
+
+        if (!oauthConfig) {
+          throw new Error('OAuth configuration not provided')
+        }
+
+        const result = await window.electronAPI.mcpExchangeOAuthCode(code, state, oauthConfig)
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to exchange OAuth code')
+        }
+
+        // Build updated OAuth config with tokens
+        const updatedConfig: MCPOAuthConfig = {
+          ...oauthConfig,
+          accessToken: result.tokens.access_token,
+          refreshToken: result.tokens.refresh_token,
+          tokenExpiresAt: result.tokens.expires_in
+            ? Date.now() + result.tokens.expires_in * 1000
+            : undefined,
+          tokenIssuedAt: Date.now(),
+        }
+
+        onSuccess(result.serverId || 'unknown', updatedConfig)
       } catch (error) {
         console.error('[useOAuthCallback] OAuth callback error:', error)
         onError(error as Error)
@@ -53,5 +95,5 @@ export function useOAuthCallback(
     return () => {
       cleanup()
     }
-  }, [onSuccess, onError])
+  }, [onSuccess, onError, oauthConfig])
 }

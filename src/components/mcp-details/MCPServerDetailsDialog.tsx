@@ -2,10 +2,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plug2, Circle, CheckCircle } from "lucide-react"
 import type { MCPServer } from "@/types/mcp"
-import { STATE_UI_CONFIG } from "@/types/mcpState"
 import { MCPOverview } from "./MCPOverview"
 import { MCPToolsList } from "./MCPToolsList"
-import { MCPServerLogs } from "./MCPServerLogs"
 import { MCPResourcesList } from "./MCPResourcesList"
 import { MCPPromptsList } from "./MCPPromptsList"
 import { MCPConfigEditor } from "./MCPConfigEditor"
@@ -42,20 +40,19 @@ export function MCPServerDetailsDialog({
 
   if (!server) return null
 
-  const stateConfig = STATE_UI_CONFIG[server.status]
   const toolsCount = isLoading ? '...' : tools.length
   const resourcesCount = isLoading ? '...' : resources.length
   const promptsCount = isLoading ? '...' : prompts.length
 
   const getStatusColor = () => {
-    switch (stateConfig.color) {
-      case 'success':
+    switch (server.state) {
+      case 'connected':
         return 'text-green-400'
       case 'error':
         return 'text-red-400'
-      case 'warning':
+      case 'auth_required':
         return 'text-orange-400'
-      case 'info':
+      case 'connecting':
         return 'text-blue-400'
       default:
         return 'text-gray-400'
@@ -63,10 +60,27 @@ export function MCPServerDetailsDialog({
   }
 
   const getStatusIcon = () => {
-    if (server.status === 'RUNNING') {
+    if (server.state === 'connected') {
       return <CheckCircle className="h-4 w-4" />
     }
     return <Circle className="h-4 w-4" />
+  }
+
+  const getStatusLabel = () => {
+    switch (server.state) {
+      case 'idle':
+        return 'Idle'
+      case 'connecting':
+        return 'Connecting'
+      case 'connected':
+        return 'Connected'
+      case 'error':
+        return 'Error'
+      case 'auth_required':
+        return 'Auth Required'
+      default:
+        return 'Unknown'
+    }
   }
 
   const getIcon = () => {
@@ -112,7 +126,7 @@ export function MCPServerDetailsDialog({
                 {getStatusIcon()}
               </span>
               <span className={cn("text-sm font-medium", getStatusColor())}>
-                {stateConfig.label}
+                {getStatusLabel()}
               </span>
             </div>
           </div>
@@ -125,7 +139,7 @@ export function MCPServerDetailsDialog({
               <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="tools" className="gap-2">
               Tools
-              {server.status === 'RUNNING' && (
+              {server.state === 'connected' && (
                 <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
                   {toolsCount}
                 </span>
@@ -133,7 +147,7 @@ export function MCPServerDetailsDialog({
             </TabsTrigger>
             <TabsTrigger value="resources" className="gap-2">
               Resources
-              {server.status === 'RUNNING' && (
+              {server.state === 'connected' && (
                 <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
                   {resourcesCount}
                 </span>
@@ -141,7 +155,7 @@ export function MCPServerDetailsDialog({
             </TabsTrigger>
             <TabsTrigger value="prompts" className="gap-2">
               Prompts
-              {server.status === 'RUNNING' && (
+              {server.state === 'connected' && (
                 <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
                   {promptsCount}
                 </span>
@@ -170,7 +184,9 @@ export function MCPServerDetailsDialog({
             </TabsContent>
 
             <TabsContent value="logs" className="h-full mt-4 overflow-y-auto">
-              <MCPServerLogs server={server} />
+              <div className="text-sm text-muted-foreground">
+                Server logs are available in the terminal where the MCP server is running.
+              </div>
             </TabsContent>
 
             <TabsContent value="config" className="h-full mt-4 overflow-y-auto">

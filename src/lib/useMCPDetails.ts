@@ -49,10 +49,10 @@ export function useMCPDetails(server?: MCPServer) {
 
   // Auto-fetch capabilities when server changes
   useEffect(() => {
-    if (server && server.status === 'RUNNING') {
+    if (server && server.state === 'connected') {
       fetchCapabilities()
     }
-  }, [server?.id, server?.status, fetchCapabilities])
+  }, [server?.id, server?.state, fetchCapabilities])
 
   return {
     capabilities,
@@ -82,7 +82,7 @@ export function useToolTester(server: MCPServer, tool: MCPTool) {
 
     if (schema.properties) {
       Object.keys(schema.properties).forEach(key => {
-        const prop = schema.properties![key]
+        const prop = schema.properties![key] as { type?: string; default?: unknown }
         // Set default values based on type
         if (prop.default !== undefined) {
           initialArgs[key] = prop.default

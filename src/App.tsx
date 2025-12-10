@@ -57,19 +57,16 @@ function App() {
         }
 
         if (savedMcpServers) {
-          // Recover stuck servers first
-          let recoveredServers = await mcpManager.recoverStuckServers(savedMcpServers)
-
           // Initialize built-in servers (adds new built-in servers, updates existing ones)
-          recoveredServers = await initializeBuiltInServers(recoveredServers, userDataPath)
+          const servers = await initializeBuiltInServers(savedMcpServers, userDataPath)
 
-          setMcpServers(recoveredServers)
+          setMcpServers(servers)
 
-          // Save recovered and initialized state
-          await window.electronAPI.writeConfig('mcpServers.json', recoveredServers)
+          // Save initialized state
+          await window.electronAPI.writeConfig('mcpServers.json', servers)
 
           // Start enabled servers
-          await mcpManager.startEnabledServers(recoveredServers)
+          await mcpManager.startEnabledServers(servers)
         } else {
           // No saved servers - initialize with built-in servers only
           const builtInServers = await initializeBuiltInServers([], userDataPath)
@@ -126,13 +123,13 @@ function App() {
       window.electronAPI.onConfigChanged(handleConfigChanged)
     }
 
-    // Register listener for MCP server status changes
-    // This keeps React state synchronized with internal state machines
-    const unsubscribe = mcpManager.onStatusChange((serverId, status, metadata) => {
+    // Register listener for MCP server state changes
+    // This keeps React state synchronized with internal state
+    const unsubscribe = mcpManager.onStatusChange((serverId, state, error) => {
       setMcpServers(prevServers => {
         const updatedServers = prevServers.map(server =>
           server.id === serverId
-            ? { ...server, status, stateMetadata: metadata }
+            ? { ...server, state, error }
             : server
         )
 

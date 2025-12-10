@@ -68,10 +68,10 @@ export function MCPPromptsList({ server }: MCPPromptsListProps) {
     return null
   }
 
-  if (server.status !== 'RUNNING') {
+  if (server.state !== 'connected') {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Server must be running to view prompts</p>
+        <p className="text-muted-foreground">Server must be connected to view prompts</p>
       </div>
     )
   }

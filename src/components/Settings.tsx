@@ -24,7 +24,7 @@ import { MCPDialog } from "@/components/MCPDialog"
 import { MCPServerDetailsDialog } from "@/components/mcp-details/MCPServerDetailsDialog"
 import type { MCPServer } from "@/types/mcp"
 import { mcpManager } from "@/lib/mcpManager"
-import { startOAuthFlow } from "@/lib/mcpAuth"
+// OAuth flow is now handled via mcpManager
 import { initializeBuiltInServers } from "@/lib/builtInServers"
 import {
   Command,
@@ -112,12 +112,12 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
           // Initialize built-in servers first (ensures they exist)
           let servers = await initializeBuiltInServers(savedMcpServers)
 
-          // Then initialize server statuses based on authentication state
+          // Then initialize server states based on authentication state
           const serversWithStatus = servers.map((server: MCPServer) => ({
             ...server,
-            status: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
-              ? 'AUTH_REQUIRED' as const
-              : (server.status || 'IDLE' as const)
+            state: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
+              ? 'auth_required' as const
+              : (server.state || 'idle' as const)
           }))
           setMcpServers(serversWithStatus)
         } else {
@@ -150,12 +150,12 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
           // Initialize built-in servers first (ensures they exist)
           let servers = await initializeBuiltInServers(parsed)
 
-          // Then initialize server statuses based on authentication state
+          // Then initialize server states based on authentication state
           const serversWithStatus = servers.map((server: MCPServer) => ({
             ...server,
-            status: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
-              ? 'AUTH_REQUIRED' as const
-              : (server.status || 'IDLE' as const)
+            state: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
+              ? 'auth_required' as const
+              : (server.state || 'idle' as const)
           }))
           setMcpServers(serversWithStatus)
         } else {
@@ -184,15 +184,15 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     // Listener stays active for the lifetime of the component
   }, [])
 
-  // Subscribe to MCP server status changes
+  // Subscribe to MCP server state changes
   useEffect(() => {
-    const unsubscribe = mcpManager.onStatusChange((serverId, status, metadata) => {
+    const unsubscribe = mcpManager.onStatusChange((serverId, state, error) => {
       setMcpServers(prevServers => {
         const updatedServers = prevServers.map(server =>
-          server.id === serverId ? { ...server, status, stateMetadata: metadata } : server
+          server.id === serverId ? { ...server, state, error } : server
         )
 
-        // Persist status changes to file (file watcher will sync oauthConfig back)
+        // Persist state changes to file (file watcher will sync oauthConfig back)
         if (window.electronAPI) {
           window.electronAPI.writeConfig('mcpServers.json', updatedServers)
         } else {
@@ -468,18 +468,18 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     setMcpServers(updatedServers)
   }
 
-  const handleAddMcpServer = (serverData: Omit<MCPServer, 'id' | 'status' | 'connectedAt'>) => {
+  const handleAddMcpServer = (serverData: Omit<MCPServer, 'id' | 'state' | 'connectedAt'>) => {
     const newServer: MCPServer = {
       ...serverData,
       id: Date.now().toString(),
-      status: 'IDLE',
+      state: 'idle',
     }
     saveMcpServers([...mcpServers, newServer])
     setEditingMCPServer(null)
     setActiveTab('mcp')
   }
 
-  const handleEditMcpServer = (serverData: Omit<MCPServer, 'id' | 'status' | 'connectedAt'>) => {
+  const handleEditMcpServer = (serverData: Omit<MCPServer, 'id' | 'state' | 'connectedAt'>) => {
     if (!editingMCPServer) return
 
     const updatedServers = mcpServers.map(server =>
@@ -567,10 +567,10 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
 
   const handleAuthenticateMcpServer = async (id: string) => {
     const server = mcpServers.find(s => s.id === id)
-    if (!server) return
+    if (!server || !server.oauthConfig) return
 
     try {
-      await startOAuthFlow(server)
+      await mcpManager.startOAuthFlow(server.id, server.oauthConfig)
     } catch (error) {
       console.error('OAuth authentication error:', error)
       showErrorToast('Authentication failed', error instanceof Error ? error.message : 'Unknown error')

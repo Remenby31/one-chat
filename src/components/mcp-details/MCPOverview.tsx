@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button"
-import { Play, Square, RotateCw, Activity, ShieldAlert, Wrench, FileText, MessageSquare, Clock } from "lucide-react"
+import { Play, Square, RotateCw, Activity, ShieldAlert, Wrench, FileText, MessageSquare } from "lucide-react"
 import type { MCPServer } from "@/types/mcp"
 import { mcpManager } from "@/lib/mcpManager"
 import { useMCPDetails } from "@/lib/useMCPDetails"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -16,38 +16,9 @@ export function MCPOverview({ server }: MCPOverviewProps) {
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
-  const [uptime, setUptime] = useState('')
 
-  const isRunning = server.status === 'RUNNING'
-  const canStart = ['IDLE', 'STOPPED', 'CRASHED', 'CONFIG_ERROR'].includes(server.status)
-
-  // Update uptime every second
-  useEffect(() => {
-    if (!isRunning || !server.stateMetadata?.timestamp) {
-      setUptime('N/A')
-      return
-    }
-
-    const updateUptime = () => {
-      const uptimeMs = Date.now() - server.stateMetadata!.timestamp
-      const uptimeSec = Math.floor(uptimeMs / 1000)
-      const hours = Math.floor(uptimeSec / 3600)
-      const minutes = Math.floor((uptimeSec % 3600) / 60)
-      const seconds = uptimeSec % 60
-
-      if (hours > 0) {
-        setUptime(`${hours}h ${minutes}m ${seconds}s`)
-      } else if (minutes > 0) {
-        setUptime(`${minutes}m ${seconds}s`)
-      } else {
-        setUptime(`${seconds}s`)
-      }
-    }
-
-    updateUptime()
-    const interval = setInterval(updateUptime, 1000)
-    return () => clearInterval(interval)
-  }, [isRunning, server.stateMetadata?.timestamp])
+  const isRunning = server.state === 'connected'
+  const canStart = ['idle', 'error'].includes(server.state)
 
   const handleStart = async () => {
     setIsStarting(true)
@@ -96,24 +67,14 @@ export function MCPOverview({ server }: MCPOverviewProps) {
 
   return (
     <div className="space-y-6">
-      {/* Status & Uptime Card */}
+      {/* Status Card */}
       {isRunning && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gradient-to-br from-green-500/10 to-green-600/5 border border-green-500/20 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-green-400 mb-2">
-              <Clock className="h-4 w-4" />
-              <span className="text-sm font-medium">Uptime</span>
-            </div>
-            <p className="text-2xl font-bold">{uptime}</p>
+        <div className="bg-gradient-to-br from-green-500/10 to-green-600/5 border border-green-500/20 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-green-400 mb-2">
+            <Activity className="h-4 w-4" />
+            <span className="text-sm font-medium">Status</span>
           </div>
-
-          <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/20 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-blue-400 mb-2">
-              <Activity className="h-4 w-4" />
-              <span className="text-sm font-medium">Status</span>
-            </div>
-            <p className="text-lg font-semibold text-green-400">Running</p>
-          </div>
+          <p className="text-lg font-semibold text-green-400">Connected</p>
         </div>
       )}
 
@@ -224,7 +185,7 @@ export function MCPOverview({ server }: MCPOverviewProps) {
           <div>
             <span className="text-muted-foreground">Command:</span>
             <p className="font-mono text-xs mt-1 bg-accent p-2 rounded">
-              {server.command} {server.args.join(' ')}
+              {server.command} {(server.args || []).join(' ')}
             </p>
           </div>
 
@@ -272,10 +233,10 @@ export function MCPOverview({ server }: MCPOverviewProps) {
         </div>
       )}
 
-      {/* State Message */}
-      {server.stateMetadata?.userMessage && (
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-          <p className="text-sm text-blue-400">{server.stateMetadata.userMessage}</p>
+      {/* Error Message */}
+      {server.error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+          <p className="text-sm text-red-400">{server.error}</p>
         </div>
       )}
     </div>

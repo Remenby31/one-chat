@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Trash2, Activity, Plug2, Circle, LoaderCircle, ShieldAlert, ShieldX, CheckCircle, XCircle } from "lucide-react"
-import type { MCPServer } from "@/types/mcp"
-import { STATE_UI_CONFIG, ACTIVE_STATES, ATTENTION_REQUIRED_STATES } from "@/types/mcpState"
+import { Trash2, Activity, Plug2, Circle, LoaderCircle, ShieldAlert, CheckCircle, XCircle } from "lucide-react"
+import type { MCPServer, MCPServerState } from "@/types/mcp"
 import { cn } from "@/lib/utils"
 
 interface MCPServerCardProps {
@@ -16,6 +15,15 @@ interface MCPServerCardProps {
   isTesting?: boolean
 }
 
+// UI configuration for each state
+const STATE_CONFIG: Record<MCPServerState, { label: string; color: string }> = {
+  idle: { label: 'Idle', color: 'gray' },
+  connecting: { label: 'Connecting', color: 'blue' },
+  connected: { label: 'Connected', color: 'green' },
+  error: { label: 'Error', color: 'red' },
+  auth_required: { label: 'Auth Required', color: 'orange' },
+}
+
 export function MCPServerCard({
   server,
   onToggle,
@@ -27,43 +35,34 @@ export function MCPServerCard({
   isTesting = false
 }: MCPServerCardProps) {
 
-  // Get UI config from state machine definitions
-  const stateConfig = STATE_UI_CONFIG[server.status]
+  const stateConfig = STATE_CONFIG[server.state] || STATE_CONFIG.idle
 
   const getStatusColor = () => {
     switch (stateConfig.color) {
-      case 'success':
+      case 'green':
         return 'text-green-400'
-      case 'error':
+      case 'red':
         return 'text-red-400'
-      case 'warning':
+      case 'orange':
         return 'text-orange-400'
-      case 'info':
+      case 'blue':
         return 'text-blue-400'
-      case 'primary':
-        return 'text-primary'
       default:
         return 'text-gray-400'
     }
   }
 
   const getStatusIcon = () => {
-    // Show spinner for active states
-    if (ACTIVE_STATES.includes(server.status)) {
+    if (server.state === 'connecting') {
       return <LoaderCircle className="h-3 w-3 animate-spin" />
     }
 
-    // State-specific icons
-    switch (server.status) {
-      case 'RUNNING':
+    switch (server.state) {
+      case 'connected':
         return <CheckCircle className="h-3 w-3" />
-      case 'AUTH_REQUIRED':
-      case 'AUTHENTICATING':
+      case 'auth_required':
         return <ShieldAlert className="h-3 w-3" />
-      case 'AUTH_FAILED':
-        return <ShieldX className="h-3 w-3" />
-      case 'CONFIG_ERROR':
-      case 'RUNTIME_ERROR':
+      case 'error':
         return <XCircle className="h-3 w-3" />
       default:
         return <Circle className="h-3 w-3" />
@@ -72,14 +71,12 @@ export function MCPServerCard({
 
   const getIcon = (icon?: string) => {
     if (icon) {
-      // Try to load custom icon
       return (
         <img
           src={`/icons/${icon}.svg`}
           alt={server.name}
           className="h-5 w-5 dark:invert"
           onError={(e) => {
-            // Fallback to Plug2 icon if image fails to load
             e.currentTarget.style.display = 'none'
             e.currentTarget.nextElementSibling?.classList.remove('hidden')
           }}
@@ -89,15 +86,14 @@ export function MCPServerCard({
     return null
   }
 
-  // Determine if server needs attention
-  const needsAttention = ATTENTION_REQUIRED_STATES.includes(server.status)
-  const isActive = ACTIVE_STATES.includes(server.status)
+  const needsAttention = server.state === 'auth_required' || server.state === 'error'
+  const isActive = server.state === 'connecting'
 
   return (
     <div
       className={cn(
         "group relative rounded-lg border p-4 transition-colors hover:border-primary/50",
-        server.enabled && server.status === 'RUNNING' ? "border-primary/50 bg-accent/30" : "",
+        server.enabled && server.state === 'connected' ? "border-primary/50 bg-accent/30" : "",
         needsAttention ? "border-orange-400/50" : "",
         isActive ? "border-blue-400 animate-[mcp-loading-pulse_2s_ease-in-out_infinite]" : ""
       )}
@@ -129,10 +125,10 @@ export function MCPServerCard({
               <p className="text-sm text-muted-foreground mb-2">{server.description}</p>
             )}
 
-            {/* Error message only */}
-            {server.stateMetadata?.errorMessage && (
+            {/* Error message */}
+            {server.error && (
               <p className="text-xs text-red-400 mt-1">
-                {server.stateMetadata.errorMessage}
+                {server.error}
               </p>
             )}
           </div>
@@ -162,7 +158,7 @@ export function MCPServerCard({
             isTesting || needsAttention ? "opacity-100" : "opacity-60 group-hover:opacity-100"
           )}>
             {/* Authenticate button for auth states */}
-            {(server.status === 'AUTH_REQUIRED' || server.status === 'AUTH_FAILED') && onAuthenticate && (
+            {server.state === 'auth_required' && onAuthenticate && (
               <Button
                 variant="outline"
                 size="sm"
@@ -176,7 +172,7 @@ export function MCPServerCard({
             )}
 
             {/* Retry button for error states */}
-            {(server.status === 'CONFIG_ERROR' || server.status === 'RUNTIME_ERROR') && onRetry && (
+            {server.state === 'error' && onRetry && (
               <Button
                 variant="outline"
                 size="sm"

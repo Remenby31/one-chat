@@ -59,7 +59,7 @@ export function useStreamingChat(
     }
 
     const activeServers = mcpServers.filter(
-      s => s.enabled && s.status === 'RUNNING'
+      s => s.enabled && s.state === 'connected'
     )
 
     if (activeServers.length === 0) {
@@ -194,7 +194,7 @@ export function useStreamingChat(
       // Fetch and inject conventional prompts from MCP servers
       let injectedMessages: APIMessage[] = []
       try {
-        injectedMessages = await getInjectedMessages(mcpManager) as APIMessage[]
+        injectedMessages = await getInjectedMessages(mcpServers) as APIMessage[]
       } catch (error) {
         console.warn('[useStreamingChat] Failed to fetch conventional prompts:', error)
       }

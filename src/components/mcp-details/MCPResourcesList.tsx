@@ -23,10 +23,10 @@ export function MCPResourcesList({ server }: MCPResourcesListProps) {
     )
   })
 
-  if (server.status !== 'RUNNING') {
+  if (server.state !== 'connected') {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Server must be running to view resources</p>
+        <p className="text-muted-foreground">Server must be connected to view resources</p>
       </div>
     )
   }

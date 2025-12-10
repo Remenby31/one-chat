@@ -95,12 +95,15 @@ Jarvis is an Electron-based desktop chat application that integrates AI models v
 - `src/components/ThemeProvider.tsx` - Theme management (light/dark/system)
 
 **MCP Components**:
-- `src/components/mcp/MCPServerCard.tsx` - Display MCP server status and info
-- `src/components/mcp/MCPDialog.tsx` - Add/configure MCP server dialog
-- `src/components/mcp/MCPToolsList.tsx` - Display available tools from MCP server
-- `src/components/mcp/MCPPromptsList.tsx` - Display available prompts from MCP server
-- `src/components/mcp/MCPServerLogs.tsx` - Real-time MCP server logs
-- `src/components/mcp/MCPButton.tsx` - Button for triggering MCP tool execution
+- `src/components/mcp-details/MCPServerCard.tsx` - Display MCP server status and info
+- `src/components/mcp-details/MCPDialog.tsx` - Add/configure MCP server dialog with JSON import
+- `src/components/mcp-details/MCPToolsList.tsx` - Display available tools from MCP server
+- `src/components/mcp-details/MCPPromptsList.tsx` - Display available prompts from MCP server
+- `src/components/mcp-details/MCPResourcesList.tsx` - Display available resources from MCP server
+- `src/components/mcp-details/MCPConfigEditor.tsx` - View server configuration (read-only)
+- `src/components/mcp-details/MCPOverview.tsx` - Server overview with capabilities and actions
+- `src/components/mcp-details/MCPServerDetailsDialog.tsx` - Tabbed dialog for server details
+- `src/components/MCPButton.tsx` - Button for triggering MCP tool execution
 
 **Custom UI Components**:
 - `src/components/ui/form-field.tsx` - Reusable form field component with label and slim input (h-8)
@@ -120,7 +123,7 @@ Jarvis is an Electron-based desktop chat application that integrates AI models v
 2. **App Initialization**:
    - App.tsx loads models, API keys, and MCP servers from storage (Electron: JSON files, Dev: localStorage)
    - Loads selected model and sets as active
-   - Initializes MCP servers via MCPProcessManager
+   - Initializes MCP servers via MCPSDKManager (uses official `@modelcontextprotocol/sdk`)
    - Sets up config file watchers for real-time sync
 
 3. **Thread Management**:
@@ -214,16 +217,15 @@ The app uses Electron IPC for secure communication between main and renderer pro
 - `thread:delete` - Delete a thread folder
 
 **MCP Server Management**:
-- `mcp:start-server` - Start MCP server process with stdio transport
-- `mcp:stop-server` - Stop MCP server process
+- `mcp:start-server` - Start MCP server (stdio or HTTP transport, with auto token refresh)
+- `mcp:stop-server` - Stop MCP server
 - `mcp:list-tools` - List available tools from MCP server
 - `mcp:get-capabilities` - Get MCP server capabilities (tools, prompts, resources)
 - `mcp:call-tool` - Execute MCP tool with arguments
 - `mcp:list-prompts` - List available prompts from MCP server
 - `mcp:get-prompt` - Get MCP prompt by name
-- `mcp:get-logs` - Get MCP server logs (recent entries)
-- `mcp:clear-logs` - Clear MCP server logs
-- `mcp:import-claude-desktop` - Import MCP server config from Claude Desktop
+- `mcp:start-oauth` - Initiate OAuth 2.0 flow with PKCE for server authentication
+- `mcp:exchange-oauth-code` - Exchange OAuth authorization code for access/refresh tokens
 
 ### Storage & Configuration
 
@@ -250,8 +252,8 @@ The app uses Electron IPC for secure communication between main and renderer pro
 - Stored in `mcpServers.json`
 - Includes server configuration, OAuth tokens, and credentials
 - Access tokens auto-refreshed when expired (5-minute buffer)
-- Server processes managed by MCPProcessManager with lifecycle tracking
-- Logs streamed in real-time via IPC to UI
+- Server processes managed by MCPSDKManager using official `@modelcontextprotocol/sdk`
+- Supports both stdio transport (local servers) and HTTP transport (remote servers)
 
 **Fallback**:
 - In browser/dev mode without Electron, falls back to localStorage
@@ -259,91 +261,110 @@ The app uses Electron IPC for secure communication between main and renderer pro
 
 ### MCP System Architecture
 
-The app provides full MCP (Model Context Protocol) server support with a clean, modular, reusable library:
+The app uses the official **`@modelcontextprotocol/sdk`** for full MCP (Model Context Protocol) server support:
 
-**Core Module** (`src/lib/mcp/`):
-A complete, standalone MCP client library with 6 layers:
+**Core Implementation** (`electron/mcp-sdk.ts`):
+- **MCPSDKManager**: Main class managing MCP server lifecycle using official SDK
+- **Dual Transport Support**:
+  - `StdioClientTransport` - For local servers via stdio (e.g., npx packages)
+  - `StreamableHTTPClientTransport` - For remote servers via HTTP/HTTPS (e.g., hosted MCP servers)
+- **Connection Management**: 30-second timeout, automatic cleanup on errors
+- **Capabilities Fetching**: Parallel fetching of tools, prompts, and resources
+- **State Tracking**: Maintains client instances with connection state
 
-1. **Core** (`core/`) - Foundation:
-   - Types: MCPServer, MCPTool, MCPPrompt, MCPResource, OAuth config
-   - Errors: Typed error classes with MCPErrorCode constants
-   - State Machine: Valid state transitions for server lifecycle
-   - States: stopped, initializing, running, error, unknown
+**OAuth Implementation** (`electron/mcp-oauth.ts`):
+- **ElectronOAuthProvider**: Implements SDK's `OAuthClientProvider` interface
+- **PKCE Support**: Cryptographic code verifier/challenge generation (RFC 7636)
+- **Token Management**: Auto-refresh expired tokens (5-minute buffer), persist tokens in config
+- **Custom Protocol**: Uses `jarvis://oauth/callback` for OAuth redirects
+- **Functions**: `startOAuthFlow()`, `exchangeCodeForTokens()`, `refreshAccessToken()`, `needsTokenRefresh()`
 
-2. **Adapters** (`adapters/`) - Environment abstraction:
-   - **Interfaces**: StorageAdapter, ProcessAdapter, BrowserAdapter, EnvAdapter, LoggerAdapter
-   - **Electron implementations**: All IPC communication abstracted
-   - **Memory adapter**: For testing without Electron
-   - Enables reuse in other projects (Web, Node.js, Deno)
+**Client-Side Integration** (`src/lib/mcpManager.ts`):
+- **MCPManager**: IPC wrapper for renderer process
+- **State Management**: Tracks server states with callback system
+- **Methods**: `startServer()`, `stopServer()`, `getServerTools()`, `callTool()`, `testConnection()`, `startOAuthFlow()`
+- **State Callbacks**: Notifies UI components of state changes
 
-3. **Auth** (`auth/`) - OAuth 2.0 & Token Management:
-   - PKCE: RFC 7636 code verifier/challenge generation
-   - Discovery: RFC 8414 OAuth metadata probing
-   - TokenManager: Automated OAuth flow with token refresh
-   - Stores tokens in config with 5-minute expiry buffer
+**Server States** (`src/types/mcp.ts`):
+- `'idle'` - Server not started
+- `'connecting'` - Starting up / connecting
+- `'connected'` - Running and ready
+- `'error'` - Error occurred (with error message)
+- `'auth_required'` - OAuth authentication needed
 
-4. **Manager** (`manager/`) - Orchestration:
-   - ServerManager: Manages single server lifecycle
-   - MCPRegistry: Multi-server management with event listeners
-   - Methods: addServer, startServer, stopServer, callTool, listTools, listPrompts, getPrompt
-
-5. **Config** (`config/`) - Multi-format parsing:
-   - MCPConfigParser: Parse Claude Desktop, Cursor, or raw JSON config
-   - Enables config migration from other tools
-
-6. **React Hooks** (`hooks/`) - UI Integration:
-   - MCPProvider: Context provider for registry
-   - useMCPRegistry: Access to servers, start/stop/callTool
-   - useMCPServer: Single server status, logs, tools
-   - Uses useSyncExternalStore for reactive state
-
-**Built-in MCP Servers**:
-- `src/lib/builtInServers.ts` - Auto-enables built-in MCP servers:
-  - Obsidian Memory MCP server (mcp-servers/built-in/obsidian-memory/)
-  - Additional built-in servers can be configured here
+**Built-in MCP Servers** (`src/lib/builtInServers.ts`):
+- Auto-enables built-in MCP servers on first launch
+- Obsidian Memory MCP server (mcp-servers/built-in/obsidian-memory/)
+- Additional built-in servers can be configured here
 
 **MCP Configuration** (`.mcp.json`):
 - `shadcn` - For shadcn/ui component management
-- `electron` - Local MCP server for Jarvis-specific tools
+- `context7` - For documentation fetching
+- Additional MCP servers for development tools
 
-**Tool Injection**:
-- Tool injection via `getInjectedMessages()` - Injects available MCP tools into chat context
-- Integrated in `useStreamingChat.ts` hook during message sending
+**Tool Injection** (`src/lib/mcpPromptInjection.ts`):
+- Fetches tools from all connected servers
+- Injects into chat context via `getInjectedMessages()`
+- Integrated in `useStreamingChat.ts` during message sending
 
 ### MCP OAuth Workflow
 
-MCP servers like Supabase require OAuth 2.1 authentication. The app implements a fully automated OAuth flow via the `src/lib/mcp/auth/` module:
+Remote MCP servers (HTTP transport) often require OAuth 2.0 authentication. The app implements OAuth using the SDK's provider interface:
 
-**1. OAuth Discovery (RFC 8414)** - `src/lib/mcp/auth/discovery.ts`:
-- Probes MCP server for `www-authenticate` header
-- Fetches resource metadata and authorization server metadata from `.well-known` URLs
-- Automatically discovers `authUrl`, `tokenUrl`, and `scopes`
+**Implementation** (`electron/mcp-oauth.ts`):
 
-**2. Dynamic Client Registration (RFC 7591)**:
-- Registers app as OAuth client with authorization server
-- Obtains `client_id` (UUID) and `client_secret` automatically
-- No manual OAuth configuration needed by user
+**1. ElectronOAuthProvider** - Implements SDK's `OAuthClientProvider`:
+- `redirectUrl`: Returns `jarvis://oauth/callback` for OAuth redirects
+- `tokens()`: Retrieves stored tokens from config
+- `saveTokens()`: Persists tokens to `mcpServers.json`
+- `redirectToAuthorization()`: Opens system browser for user authentication
+- `saveCodeVerifier()` / `codeVerifier()`: Manages PKCE code verifier
 
-**3. PKCE Authorization Flow** - `src/lib/mcp/auth/pkce.ts` + `token-manager.ts`:
-- Generates cryptographic `code_verifier` and `code_challenge` (SHA-256)
-- Opens system browser with authorization URL via BrowserAdapter
-- User authenticates on provider's page
-- App receives callback via `jarvis://oauth/callback` custom protocol
-- Exchanges authorization code for `access_token` and `refresh_token`
+**2. PKCE Support** (RFC 7636):
+- `generateCodeVerifier()`: Creates cryptographic random string (43-128 chars)
+- `generateCodeChallenge()`: SHA-256 hash of verifier, base64url-encoded
+- Prevents authorization code interception attacks
 
-**4. Token Management**:
-- Tokens stored in `mcpServers.json` with `client_secret` for refresh
-- Access tokens typically expire after 1 hour
-- Refresh tokens valid for 30+ days
-- TokenManager automatically refreshes expired tokens (5-minute buffer)
-- Token refresh uses stored `client_secret` - no re-authentication needed
+**3. OAuth Flow Functions**:
+- `startOAuthFlow(serverId, oauthConfig)`:
+  - Generates PKCE verifier/challenge
+  - Builds authorization URL with state parameter (CSRF protection)
+  - Opens system browser via Electron shell
+  - Returns state and verifier for later exchange
 
-**5. State Persistence**:
-- OAuth config (`clientId`, `clientSecret`, `authUrl`, `tokenUrl`, `scopes`) → `AppData/mcpServers.json`
-- Access/refresh tokens → `AppData/mcpServers.json` (persist across restarts)
-- OAuth flow state (CSRF protection) → `sessionStorage` (temporary, 10-minute expiry)
+- `exchangeCodeForTokens(code, codeVerifier, oauthConfig)`:
+  - Exchanges authorization code for tokens
+  - Sends PKCE verifier for validation
+  - Returns `access_token`, `refresh_token`, `expires_in`
 
-**UX**: Users see simple "Authenticate" button - all OAuth discovery and DCR happen automatically in background.
+- `refreshAccessToken(oauthConfig)`:
+  - Uses refresh token to get new access token
+  - Called automatically when token expires (5-minute buffer)
+
+- `needsTokenRefresh(oauthConfig)`:
+  - Checks if token expires within 5 minutes
+  - Used by `mcp:start-server` to refresh before connecting
+
+**4. Token Storage**:
+- OAuth config stored in `mcpServers.json`:
+  - `authUrl`, `tokenUrl`, `scopes`
+  - `clientId`, `clientSecret` (if using client credentials)
+  - `accessToken`, `refreshToken`, `tokenExpiresAt`, `tokenIssuedAt`
+- Tokens persist across app restarts
+- OAuth state (CSRF) stored in-memory during flow
+
+**5. User Experience**:
+- JSON import detects OAuth requirement (servers with `url` field)
+- Shows "Authenticate" button instead of "Add Server"
+- Opens browser automatically for authentication
+- Callback handled via `jarvis://oauth/callback` protocol
+- Tokens saved and server started automatically after auth
+
+**Integration** (`src/hooks/useOAuthCallback.ts`):
+- React hook listens for OAuth callbacks
+- Parses code/state from callback URL
+- Exchanges code for tokens via IPC
+- Calls success callback with updated OAuth config
 
 ## Important Notes
 
@@ -382,43 +403,18 @@ MCP servers like Supabase require OAuth 2.1 authentication. The app implements a
 - **Provider icons**: Auto-detected icons for major AI providers
 - **Localization**: English strings throughout UI
 
-### MCP Module Reusability
+### Key Dependencies
 
-The `src/lib/mcp/` module is designed to be **completely reusable in other projects**:
+**MCP Integration**:
+- `@modelcontextprotocol/sdk` - Official Model Context Protocol SDK
+  - Provides `Client`, `StdioClientTransport`, `StreamableHTTPClientTransport`
+  - Handles protocol communication, request/response formatting
+  - OAuth provider interface for authentication
+- `zod` - Required peer dependency for SDK schema validation
 
-**Key Features for Reuse**:
-- **Zero external MCP dependencies**: All MCP logic is custom, no npm packages
-- **Environment-agnostic**: Adapter pattern allows different storage/process implementations
-- **TypeScript-first**: Complete type definitions for IDE support
-- **No Jarvis-specific code**: Module has no references to Jarvis, Claude, or any app-specific logic
-
-**To Use in Another Project**:
-
-1. Copy `src/lib/mcp/` to your project
-2. Implement adapters for your environment:
-   ```typescript
-   // Example: Web app with indexed storage
-   class WebStorageAdapter implements StorageAdapter {
-     async read(filename: string) { /* indexedDB */ }
-     async write(filename: string, data: any) { /* indexedDB */ }
-   }
-
-   class WebProcessAdapter implements ProcessAdapter {
-     async startServer(server: MCPServer) { /* WebSocket to backend */ }
-     async callTool(serverId, toolName, args) { /* fetch POST */ }
-   }
-   ```
-3. Create registry and use hooks (or just use the manager classes directly)
-
-**Example for Node.js**:
-- StorageAdapter: fs/promises
-- ProcessAdapter: child_process.spawn
-- BrowserAdapter: open package
-- EnvAdapter: process.env
-
-**Example for Deno**:
-- StorageAdapter: Deno.writeTextFile
-- ProcessAdapter: Deno.run
-- BrowserAdapter: Deno.open
-
-The module is suitable for packaging as an npm package if needed.
+**Why Official SDK**:
+- Maintains compatibility with MCP specification updates
+- Reduces maintenance burden (~3000 lines of custom code removed)
+- Supports both stdio and HTTP transports out-of-the-box
+- Standardized OAuth implementation with PKCE
+- Better debugging with official tooling

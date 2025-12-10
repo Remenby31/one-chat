@@ -17,8 +17,7 @@ import {
 } from "@/components/ui/tooltip"
 import { CheckCircle2, AlertCircle, ShieldAlert, ShieldCheck, Plus, Save, ChevronRight, ChevronLeft, HelpCircle } from "lucide-react"
 import type { MCPServer } from "@/types/mcp"
-import { startOAuthFlow } from "@/lib/mcpAuth"
-import { importSingleServerAsync } from "@/lib/mcpConfigAdapter"
+import { mcpManager } from "@/lib/mcpManager"
 import { useOAuthCallback } from "@/hooks/useOAuthCallback"
 import { showErrorToast, showWarningToast } from "@/lib/errorToast"
 
@@ -26,7 +25,7 @@ interface MCPDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   server?: MCPServer | null
-  onSave: (server: Omit<MCPServer, 'id' | 'status' | 'connectedAt'>) => void
+  onSave: (server: Omit<MCPServer, 'id' | 'state' | 'connectedAt'>) => void
 }
 
 export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps) {
@@ -34,7 +33,7 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
   const [jsonInput, setJsonInput] = useState('')
   const [jsonError, setJsonError] = useState('')
   const [isJsonValid, setIsJsonValid] = useState(false)
-  const [parsedServer, setParsedServer] = useState<Omit<MCPServer, 'id' | 'status' | 'connectedAt'> | null>(null)
+  const [parsedServer, setParsedServer] = useState<Omit<MCPServer, 'id' | 'state' | 'connectedAt'> | null>(null)
   const [isParsingJson, setIsParsingJson] = useState(false)
   const [autoSaveAfterOAuth, setAutoSaveAfterOAuth] = useState(false)
 
@@ -55,7 +54,6 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
       accessToken: undefined as string | undefined,
       refreshToken: undefined as string | undefined,
       tokenExpiresAt: undefined as number | undefined,
-      registrationAccessToken: undefined as string | undefined,
     }
   })
 
@@ -138,8 +136,55 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
     }
   )
 
-  // Validate JSON input in real-time with OAuth discovery
-  const validateJsonInput = async (text: string) => {
+  // Parse MCP server configuration from JSON
+  const parseServerConfig = (text: string): Omit<MCPServer, 'id' | 'state' | 'connectedAt'> | null => {
+    try {
+      const parsed = JSON.parse(text)
+      const mcpServers = parsed.mcpServers
+
+      if (!mcpServers || typeof mcpServers !== 'object') {
+        return null
+      }
+
+      // Get the first server
+      const serverNames = Object.keys(mcpServers)
+      if (serverNames.length === 0) return null
+
+      const serverName = serverNames[0]
+      const serverConfig = mcpServers[serverName]
+
+      // Build server object
+      const server: Omit<MCPServer, 'id' | 'state' | 'connectedAt'> = {
+        name: serverName,
+        command: serverConfig.command || 'npx',
+        args: serverConfig.args || [],
+        env: serverConfig.env || {},
+        enabled: true,
+        requiresAuth: false,
+        authType: 'none',
+      }
+
+      // Handle HTTP URL (remote server)
+      if (serverConfig.url) {
+        server.httpUrl = serverConfig.url
+        // HTTP servers often require OAuth
+        server.requiresAuth = true
+        server.authType = 'oauth'
+        server.oauthConfig = {
+          authUrl: serverConfig.url.replace(/\/mcp$/, '/oauth/authorize'),
+          tokenUrl: serverConfig.url.replace(/\/mcp$/, '/oauth/token'),
+          scopes: [],
+        }
+      }
+
+      return server
+    } catch {
+      return null
+    }
+  }
+
+  // Validate JSON input in real-time
+  const validateJsonInput = (text: string) => {
     if (!text.trim()) {
       setIsJsonValid(false)
       setJsonError('')
@@ -147,7 +192,7 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
       return
     }
 
-    // First, basic JSON validation
+    // Basic JSON validation
     try {
       const parsed = JSON.parse(text)
       const hasMcpServers = parsed.mcpServers && typeof parsed.mcpServers === 'object'
@@ -159,28 +204,17 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
         return
       }
 
-      // JSON is valid, now parse and discover OAuth config
-      setIsParsingJson(true)
-      setJsonError('')
+      // Parse server configuration
+      const server = parseServerConfig(text)
 
-      try {
-        const parsed = await importSingleServerAsync(text)
-
-        if (parsed) {
-          setIsJsonValid(true)
-          setParsedServer(parsed)
-          setJsonError('')
-        } else {
-          setIsJsonValid(false)
-          setParsedServer(null)
-          setJsonError('Unable to parse server configuration')
-        }
-      } catch (error) {
+      if (server) {
+        setIsJsonValid(true)
+        setParsedServer(server)
+        setJsonError('')
+      } else {
         setIsJsonValid(false)
         setParsedServer(null)
-        setJsonError('Failed to parse server configuration')
-      } finally {
-        setIsParsingJson(false)
+        setJsonError('Unable to parse server configuration')
       }
     } catch {
       setIsJsonValid(false)
@@ -209,12 +243,12 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
     if (server) {
       setFormData({
         name: server.name,
-        command: server.command,
-        argsText: server.args.join('\n'),
+        command: server.command || 'npx',
+        argsText: (server.args || []).join('\n'),
         envText: Object.entries(server.env || {})
           .map(([k, v]) => `${k}=${v}`)
           .join('\n'),
-        requiresOAuth: server.requiresAuth && server.authType === 'oauth',
+        requiresOAuth: !!(server.requiresAuth && server.authType === 'oauth'),
         oauthConfig: {
           clientId: server.oauthConfig?.clientId || '',
           clientSecret: server.oauthConfig?.clientSecret,
@@ -224,7 +258,6 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
           accessToken: server.oauthConfig?.accessToken,
           refreshToken: server.oauthConfig?.refreshToken,
           tokenExpiresAt: server.oauthConfig?.tokenExpiresAt,
-          registrationAccessToken: server.oauthConfig?.registrationAccessToken,
         }
       })
     } else {
@@ -244,7 +277,6 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
           accessToken: undefined,
           refreshToken: undefined,
           tokenExpiresAt: undefined,
-          registrationAccessToken: undefined,
         }
       })
     }
@@ -301,8 +333,8 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
       // Fill form with parsed data
       setFormData({
         name: parsedServer.name,
-        command: parsedServer.command,
-        argsText: parsedServer.args.join('\n'),
+        command: parsedServer.command || 'npx',
+        argsText: (parsedServer.args || []).join('\n'),
         envText: Object.entries(parsedServer.env || {})
           .map(([k, v]) => `${k}=${v}`)
           .join('\n'),
@@ -316,30 +348,15 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
           accessToken: undefined,
           refreshToken: undefined,
           tokenExpiresAt: undefined,
-          registrationAccessToken: parsedServer.oauthConfig?.registrationAccessToken,
         }
       })
 
       // Set auto-save flag so we save after OAuth completes
       setAutoSaveAfterOAuth(true)
 
-      // Create temporary server object for OAuth flow
-      const serverToAuth: MCPServer = {
-        id: 'temp',
-        name: parsedServer.name,
-        command: parsedServer.command,
-        args: parsedServer.args,
-        env: parsedServer.env || {},
-        enabled: true,
-        requiresAuth: true,
-        authType: 'oauth',
-        status: 'IDLE',
-        oauthConfig: parsedServer.oauthConfig
-      } as MCPServer
-
-      // Launch OAuth flow directly
+      // Launch OAuth flow via mcpManager
       try {
-        await startOAuthFlow(serverToAuth)
+        await mcpManager.startOAuthFlow('temp', parsedServer.oauthConfig)
       } catch (error) {
         console.error('OAuth flow error:', error)
         showErrorToast('Failed to start OAuth flow', error instanceof Error ? error.message : 'Unknown error')
@@ -372,21 +389,8 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
     })
 
     try {
-      const serverToAuth: MCPServer = {
-        ...formData,
-        id: server?.id || 'temp',
-        enabled: true,
-        args: parseArgs(formData.argsText),
-        env: parseEnv(formData.envText),
-        requiresAuth: formData.requiresOAuth,
-        authType: formData.requiresOAuth ? 'oauth' : 'none',
-        status: 'IDLE',
-        oauthConfig: formData.oauthConfig // Explicitly pass oauthConfig
-      } as MCPServer
-
-      console.log('[MCPDialog] Server oauthConfig.clientId:', serverToAuth.oauthConfig?.clientId)
-
-      await startOAuthFlow(serverToAuth)
+      const serverId = server?.id || 'temp'
+      await mcpManager.startOAuthFlow(serverId, formData.oauthConfig)
     } catch (error) {
       console.error('OAuth flow error:', error)
       showErrorToast('Failed to start OAuth flow', error instanceof Error ? error.message : 'Unknown error')

@@ -30,10 +30,10 @@ export function MCPToolsList({ server }: MCPToolsListProps) {
     return Object.keys(tool.inputSchema.properties || {}).length
   }
 
-  if (server.status !== 'RUNNING') {
+  if (server.state !== 'connected') {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Server must be running to view tools</p>
+        <p className="text-muted-foreground">Server must be connected to view tools</p>
       </div>
     )
   }

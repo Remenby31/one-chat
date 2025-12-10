@@ -43,13 +43,13 @@ export function MCPConfigEditor({ server }: MCPConfigEditorProps) {
         <h3 className="text-sm font-semibold">Arguments</h3>
 
         <div className="space-y-2">
-          {server.args.map((arg, index) => (
+          {(server.args || []).map((arg, index) => (
             <div key={index} className="text-sm font-mono bg-accent p-2 rounded">
               {index + 1}. {arg}
             </div>
           ))}
 
-          {server.args.length === 0 && (
+          {(!server.args || server.args.length === 0) && (
             <p className="text-sm text-muted-foreground">No arguments</p>
           )}
         </div>

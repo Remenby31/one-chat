@@ -1,9 +1,17 @@
-// MCP Server types and interfaces
+/**
+ * MCP Types - Simplified for SDK-based implementation
+ */
 
-import type { MCPServerState, MCPStateMetadata } from './mcpState'
+// Server state (simplified from ~20 states to 5)
+export type MCPServerState =
+  | 'idle'           // Not started
+  | 'connecting'     // Starting up
+  | 'connected'      // Running and ready
+  | 'error'          // Error occurred
+  | 'auth_required'; // OAuth authentication needed
 
-// Legacy type alias for backwards compatibility
-export type MCPServerStatus = MCPServerState
+// Legacy alias for backwards compatibility during migration
+export type MCPServerStatus = MCPServerState;
 
 export type MCPAuthType = 'oauth' | 'token' | 'none';
 
@@ -11,7 +19,7 @@ export type MCPServerCategory = 'productivity' | 'database' | 'api' | 'filesyste
 
 export interface MCPOAuthConfig {
   clientId?: string;
-  clientSecret?: string; // From Dynamic Client Registration (required by some providers like Supabase)
+  clientSecret?: string;
   authUrl?: string;
   tokenUrl?: string;
   redirectUri?: string;
@@ -19,40 +27,38 @@ export interface MCPOAuthConfig {
   // OAuth tokens
   accessToken?: string;
   refreshToken?: string;
-  tokenExpiresAt?: number; // When the access token expires (typically 1 hour)
-  tokenIssuedAt?: number; // When tokens were issued (for tracking refresh token age)
-  // Dynamic Client Registration
-  registrationAccessToken?: string; // Token for managing the dynamically registered client
+  tokenExpiresAt?: number;
+  tokenIssuedAt?: number;
 }
 
 export interface MCPServer {
   id: string;
   name: string;
   enabled: boolean;
-  command: string;
-  args: string[];
+
+  // Stdio transport (local servers)
+  command?: string;
+  args?: string[];
   env?: Record<string, string>;
 
-  // Authentication configuration
-  requiresAuth: boolean;
-  authType: MCPAuthType;
-  authToken?: string; // For simple token auth
+  // HTTP transport (remote servers)
+  httpUrl?: string;
+
+  // Authentication
+  requiresAuth?: boolean;
+  authType?: MCPAuthType;
+  authToken?: string;
   oauthConfig?: MCPOAuthConfig;
 
-  // Runtime state - now using robust state machine
-  status: MCPServerState; // Current state from state machine
-  stateMetadata?: MCPStateMetadata; // Additional state context
+  // Runtime state
+  state: MCPServerState;
+  error?: string;
 
-  // Legacy fields (deprecated, kept for backwards compatibility)
-  error?: string; // Deprecated: use stateMetadata.errorMessage
-  connectedAt?: string; // Deprecated: use stateMetadata.timestamp
-  lastError?: string; // Deprecated: use stateMetadata.errorMessage
-
-  // Metadata - All optional for simplified setup
+  // Metadata
   description?: string;
   icon?: string;
   category?: MCPServerCategory;
-  isBuiltIn?: boolean; // True for built-in servers (cannot be deleted, auto-initialized)
+  isBuiltIn?: boolean;
 }
 
 // Tool definition from MCP server
@@ -61,7 +67,7 @@ export interface MCPTool {
   description?: string;
   inputSchema: {
     type: string;
-    properties?: Record<string, any>;
+    properties?: Record<string, unknown>;
     required?: string[];
   };
 }
@@ -97,17 +103,6 @@ export interface MCPTestResult {
   success: boolean;
   message: string;
   capabilities?: MCPServerCapabilities;
-}
-
-// OAuth flow state
-export interface MCPOAuthState {
-  serverId: string;
-  state: string;
-  codeVerifier: string;
-  timestamp: number;
-  // Store OAuth config temporarily for callback (server may not be saved yet)
-  oauthConfig?: MCPOAuthConfig;
-  serverName?: string;
 }
 
 // Pre-configured MCP server templates
@@ -149,17 +144,6 @@ export const MCP_SERVER_TEMPLATES: MCPServerTemplate[] = [
     documentationUrl: 'https://github.com/modelcontextprotocol/servers',
   },
   {
-    name: 'GitLab',
-    description: 'Manage GitLab projects, issues, and merge requests',
-    icon: 'gitlab',
-    category: 'productivity',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-gitlab'],
-    requiresAuth: true,
-    authType: 'token',
-    documentationUrl: 'https://github.com/modelcontextprotocol/servers',
-  },
-  {
     name: 'PostgreSQL',
     description: 'Query and manage PostgreSQL databases',
     icon: 'database',
@@ -190,39 +174,6 @@ export const MCP_SERVER_TEMPLATES: MCPServerTemplate[] = [
     args: ['-y', '@modelcontextprotocol/server-brave-search'],
     requiresAuth: true,
     authType: 'token',
-    documentationUrl: 'https://github.com/modelcontextprotocol/servers',
-  },
-  {
-    name: 'Google Drive',
-    description: 'Access and manage Google Drive files',
-    icon: 'google-drive',
-    category: 'productivity',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-gdrive'],
-    requiresAuth: true,
-    authType: 'oauth',
-    documentationUrl: 'https://github.com/modelcontextprotocol/servers',
-  },
-  {
-    name: 'Google Maps',
-    description: 'Search locations and get directions with Google Maps',
-    icon: 'google-maps',
-    category: 'api',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-google-maps'],
-    requiresAuth: true,
-    authType: 'token',
-    documentationUrl: 'https://github.com/modelcontextprotocol/servers',
-  },
-  {
-    name: 'Slack',
-    description: 'Send messages and manage Slack workspaces',
-    icon: 'slack',
-    category: 'productivity',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-slack'],
-    requiresAuth: true,
-    authType: 'oauth',
     documentationUrl: 'https://github.com/modelcontextprotocol/servers',
   },
   {

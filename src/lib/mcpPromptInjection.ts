@@ -6,7 +6,8 @@
  * with multi-occurrence support and intelligent concatenation.
  */
 
-import type { MCPManager } from './mcpManager';
+import type { MCPServer } from '@/types/mcp';
+import { mcpManager } from './mcpManager';
 
 /**
  * Supported conventional prompt types based on OpenAI message roles
@@ -28,7 +29,7 @@ export interface ConventionalPrompt {
   promptName: string;
   type: ConventionalPromptType;
   content: string;
-  toolCallId?: string; // For tool messages
+  toolCallId?: string;
 }
 
 /**
@@ -82,14 +83,14 @@ function extractToolCallId(promptName: string): string {
  * Fetch all conventional prompts from all connected MCP servers
  */
 export async function fetchAllConventionalPrompts(
-  mcpManager: MCPManager
+  servers: MCPServer[]
 ): Promise<ConventionalPrompt[]> {
   const allPrompts: ConventionalPrompt[] = [];
 
   // Get all connected servers
-  const servers = mcpManager.getConnectedServers();
+  const connectedServers = servers.filter(s => s.enabled && mcpManager.isConnected(s.id));
 
-  for (const server of servers) {
+  for (const server of connectedServers) {
     try {
       // List prompts from this server
       const prompts = await mcpManager.listPromptsFromServer(server.id);
@@ -183,16 +184,15 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
 
     if (call) {
       // Parse tool call content as JSON for structured format
-      let toolCallData: any = null;
+      let toolCallData: { type?: string; tool_name?: string; arguments?: Record<string, unknown> } | null = null;
       try {
         toolCallData = JSON.parse(call.content);
       } catch (error) {
         console.error(`[mcpPromptInjection] Failed to parse tool_call ${toolCallId}, skipping:`, error);
-        continue; // Skip this pair entirely
+        continue;
       }
 
       if (toolCallData && toolCallData.type === 'tool_call') {
-        // Structured tool call format
         messages.push({
           role: 'assistant',
           content: null,
@@ -207,7 +207,6 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
         });
         toolCallAdded = true;
       } else {
-        // Invalid format - skip entirely (no fallback)
         console.error(`[mcpPromptInjection] Invalid tool_call format for ${toolCallId}, skipping`);
         continue;
       }
@@ -216,7 +215,6 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
       continue;
     }
 
-    // Only add tool result if tool_calls was successfully added
     if (result && toolCallAdded) {
       messages.push({
         role: 'tool',
@@ -245,9 +243,9 @@ export function buildInjectedMessages(prompts: ConventionalPrompt[]): OpenAIMess
  * Main function: Fetch and build all injected messages
  */
 export async function getInjectedMessages(
-  mcpManager: MCPManager
+  servers: MCPServer[]
 ): Promise<OpenAIMessage[]> {
-  const prompts = await fetchAllConventionalPrompts(mcpManager);
+  const prompts = await fetchAllConventionalPrompts(servers);
   const messages = buildInjectedMessages(prompts);
   return messages;
 }

@@ -117,7 +117,7 @@ export async function initializeBuiltInServers(
       console.log(`[builtInServers] Setting Obsidian vault path: ${obsidianVaultPath}`)
     }
 
-    const builtInConfig: Omit<MCPServer, 'status' | 'stateMetadata'> = {
+    const builtInConfig: Omit<MCPServer, 'state' | 'error'> = {
       id: definition.id,
       name: definition.name,
       description: definition.description,
@@ -145,8 +145,8 @@ export async function initializeBuiltInServers(
           ...existingServer.env, // User's env vars take precedence
         },
         // Preserve runtime state
-        status: existingServer.status,
-        stateMetadata: existingServer.stateMetadata,
+        state: existingServer.state || 'idle',
+        error: existingServer.error,
         // Ensure isBuiltIn flag is set
         isBuiltIn: true,
       }
@@ -154,7 +154,7 @@ export async function initializeBuiltInServers(
       // New built-in server - add it with default state
       servers.push({
         ...builtInConfig,
-        status: 'IDLE',
+        state: 'idle',
       })
     }
   }
