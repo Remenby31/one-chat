@@ -9,6 +9,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { BrowserWindow } from 'electron';
+import { ElectronOAuthProvider } from './mcp-oauth.js';
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 
 // Types for MCP server configuration
 export interface MCPServerConfig {
@@ -88,7 +90,37 @@ export class MCPSDKManager {
         // HTTP transport for remote servers
         // Dynamic import to avoid issues if not needed
         const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
-        transport = new StreamableHTTPClientTransport(new URL(config.httpUrl));
+
+        // Create OAuth provider if OAuth is configured
+        let authProvider: OAuthClientProvider | undefined;
+        if (config.oauthConfig) {
+          authProvider = new ElectronOAuthProvider(
+            config.id,
+            config.oauthConfig,
+            async (tokens) => {
+              // Callback to persist updated tokens
+              config.oauthConfig!.accessToken = tokens.access_token;
+              config.oauthConfig!.refreshToken = tokens.refresh_token;
+              if (tokens.expires_in) {
+                config.oauthConfig!.tokenExpiresAt = Date.now() + tokens.expires_in * 1000;
+              }
+              config.oauthConfig!.tokenIssuedAt = Date.now();
+
+              // Notify renderer to persist updated tokens
+              if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                this.mainWindow.webContents.send('mcp:tokens-updated', {
+                  serverId: config.id,
+                  oauthConfig: config.oauthConfig
+                });
+              }
+            }
+          );
+        }
+
+        transport = new StreamableHTTPClientTransport(
+          new URL(config.httpUrl),
+          authProvider ? { authProvider } : undefined
+        );
       } else {
         return { success: false, error: 'No transport configured (need command or httpUrl)' };
       }
@@ -292,6 +324,31 @@ export class MCPSDKManager {
       return { success: true, resources: result.resources };
     } catch (error) {
       console.error(`[MCP-SDK] Failed to list resources for ${serverId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  /**
+   * Read resource content from an MCP server
+   */
+  async readResource(serverId: string, uri: string): Promise<{
+    success: boolean;
+    contents?: any[];
+    error?: string
+  }> {
+    try {
+      const instance = this.clients.get(serverId);
+      if (!instance || instance.state !== 'connected') {
+        return { success: false, error: 'Server not connected' };
+      }
+
+      const result = await instance.client.readResource({ uri });
+      return { success: true, contents: result.contents };
+    } catch (error) {
+      console.error(`[MCP-SDK] Failed to read resource ${uri} from ${serverId}:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)

@@ -296,6 +296,43 @@ All notes should be accessible from this root note or connected through other no
   }
 
   /**
+   * Edit a note by finding and replacing a text section
+   * Similar to find-and-replace in a text editor
+   */
+  async editNote(
+    identifier: string,
+    oldContent: string,
+    newContent: string
+  ): Promise<MemoryNote | null> {
+    const note = await this.readNote(identifier);
+    if (!note) return null;
+
+    const fullPath = path.join(this.config.vaultPath, note.path);
+    const { frontmatter, body } = await parseMarkdownFile(fullPath);
+
+    // Find and replace the old content
+    if (!body.includes(oldContent)) {
+      throw new Error(`Content section not found in note: "${oldContent}"`);
+    }
+
+    const updatedBody = body.replace(oldContent, newContent);
+    const updatedFrontmatter: NoteFrontmatter = {
+      ...frontmatter,
+      modified: formatDate(new Date())
+    };
+
+    await writeMarkdownFile(fullPath, updatedBody, updatedFrontmatter);
+
+    const updatedNote = await this.loadNoteFromFile(fullPath);
+    this.notesIndex.set(updatedNote.id, updatedNote);
+
+    await this.updateBacklinks();
+    this.buildSearchIndex();
+
+    return updatedNote;
+  }
+
+  /**
    * Upsert a note: Update if exists, create if doesn't exist
    * Combines the logic of both createNote and updateNote
    */
@@ -357,16 +394,9 @@ All notes should be accessible from this root note or connected through other no
     if (!this.searchIndex) return [];
 
     let results = this.searchIndex.search(options.query);
-    
-    if (options.tags && options.tags.length > 0) {
-      results = results.filter(result => {
-        const noteTags = result.item.frontmatter.tags || [];
-        return options.tags!.some(tag => noteTags.includes(tag));
-      });
-    }
 
     if (options.folder) {
-      results = results.filter(result => 
+      results = results.filter(result =>
         result.item.path.startsWith(options.folder!)
       );
     }
@@ -387,133 +417,11 @@ All notes should be accessible from this root note or connected through other no
     );
   }
 
-  async createLink(fromId: string, toId: string): Promise<boolean> {
-    const fromNote = await this.readNote(fromId);
-    const toNote = await this.readNote(toId);
-    
-    if (!fromNote || !toNote) return false;
-
-    const linkText = `[[${toNote.title}]]`;
-    if (!fromNote.content.includes(linkText)) {
-      const newContent = fromNote.content + `\n\n${linkText}`;
-      await this.updateNote(fromId, { content: newContent });
-    }
-    
-    return true;
-  }
-
-  async getBacklinks(identifier: string): Promise<MemoryNote[]> {
-    const note = await this.readNote(identifier);
-    if (!note) return [];
-
-    return note.backlinks
-      .map(title => this.findNoteByPath(title))
-      .filter(n => n !== undefined) as MemoryNote[];
-  }
-
-  async getGraph(): Promise<{
-    nodes: Array<{ id: string; title: string; group: string }>;
-    links: Array<{ source: string; target: string }>;
-  }> {
-    const nodes = Array.from(this.notesIndex.values()).map(note => ({
-      id: note.id,
-      title: note.title,
-      group: path.dirname(note.path)
-    }));
-
-    const links: Array<{ source: string; target: string }> = [];
-
-    for (const note of this.notesIndex.values()) {
-      for (const link of note.links) {
-        const targetNote = this.findNoteByPath(link);
-        if (targetNote) {
-          links.push({
-            source: note.id,
-            target: targetNote.id
-          });
-        }
-      }
-    }
-
-    return { nodes, links };
-  }
-
-  /**
-   * Validate that the entire graph is connected
-   * Uses BFS to find all reachable notes from root
-   */
-  async validateGraphConnectivity(): Promise<import('./types.js').GraphValidation> {
-    // Find root note
-    const rootNote = Array.from(this.notesIndex.values()).find(n => n.isRoot);
-
-    if (!rootNote) {
-      return {
-        isFullyConnected: false,
-        totalNotes: this.notesIndex.size,
-        reachableFromRoot: 0,
-        orphanedNotes: Array.from(this.notesIndex.keys())
-      };
-    }
-
-    // BFS from root
-    const reachable = new Set<string>();
-    const queue: string[] = [rootNote.id];
-
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-
-      if (reachable.has(currentId)) continue;
-      reachable.add(currentId);
-
-      const currentNote = this.notesIndex.get(currentId);
-      if (!currentNote) continue;
-
-      // Add linked notes (outgoing links)
-      for (const link of currentNote.links) {
-        const linkedNote = this.findNoteByPath(link);
-        if (linkedNote && !reachable.has(linkedNote.id)) {
-          queue.push(linkedNote.id);
-        }
-      }
-
-      // Add notes that link to this one (incoming links / backlinks)
-      for (const backlink of currentNote.backlinks) {
-        const backlinkNote = this.findNoteByPath(backlink);
-        if (backlinkNote && !reachable.has(backlinkNote.id)) {
-          queue.push(backlinkNote.id);
-        }
-      }
-    }
-
-    const allNoteIds = Array.from(this.notesIndex.keys());
-    const orphanedIds = allNoteIds.filter(id => !reachable.has(id));
-
-    return {
-      isFullyConnected: orphanedIds.length === 0,
-      totalNotes: this.notesIndex.size,
-      reachableFromRoot: reachable.size,
-      orphanedNotes: orphanedIds,
-      unreachableNotes: orphanedIds.map(id => this.notesIndex.get(id)!).filter(Boolean)
-    };
-  }
-
-  /**
-   * Find orphaned notes (not reachable from root)
-   */
-  async findOrphanNotes(): Promise<import('./types.js').MemoryNote[]> {
-    const validation = await this.validateGraphConnectivity();
-    return validation.unreachableNotes || [];
-  }
-
   /**
    * Get the root note
    */
   async getRootNote(): Promise<import('./types.js').MemoryNote | null> {
-    console.error(`[getRootNote] Searching in ${this.notesIndex.size} notes`);
-    const allNotes = Array.from(this.notesIndex.values());
-    console.error(`[getRootNote] Notes:`, allNotes.map(n => ({ id: n.id, isRoot: n.isRoot, path: n.path })));
-    const rootNote = allNotes.find(n => n.isRoot);
-    console.error(`[getRootNote] Found root:`, rootNote ? rootNote.id : 'NOT FOUND');
+    const rootNote = Array.from(this.notesIndex.values()).find(n => n.isRoot);
     return rootNote || null;
   }
 }

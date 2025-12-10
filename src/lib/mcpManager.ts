@@ -191,6 +191,23 @@ export class MCPManager {
   }
 
   /**
+   * Read resource content from an MCP server
+   */
+  async readResource(serverId: string, uri: string): Promise<any[]> {
+    if (!window.electronAPI?.mcpReadResource) {
+      throw new Error('MCP functionality requires Electron');
+    }
+
+    const result = await window.electronAPI.mcpReadResource(serverId, uri);
+
+    if (result.success && result.contents) {
+      return result.contents;
+    }
+
+    throw new Error(result.error || 'Failed to read resource');
+  }
+
+  /**
    * Test connection to an MCP server
    */
   async testConnection(server: MCPServer): Promise<MCPTestResult> {

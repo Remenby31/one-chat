@@ -80,6 +80,14 @@ export interface MCPResource {
   mimeType?: string;
 }
 
+// Resource content from MCP server
+export interface MCPResourceContent {
+  uri: string;
+  mimeType?: string;
+  text?: string;    // For text-based resources
+  blob?: string;    // For binary resources (base64 encoded)
+}
+
 // Prompt template from MCP server
 export interface MCPPrompt {
   name: string;

@@ -700,6 +700,10 @@ ipcMain.handle('mcp:get-prompt', async (_event, serverId: string, promptName: st
   return mcpSDKManager.getPrompt(serverId, promptName, args);
 });
 
+ipcMain.handle('mcp:read-resource', async (_event, serverId: string, uri: string) => {
+  return mcpSDKManager.readResource(serverId, uri);
+});
+
 // ========================================
 // IPC Handlers - OAuth
 // ========================================

@@ -29,7 +29,6 @@ export interface WikiLink {
 
 export interface SearchOptions {
   query: string;
-  tags?: string[];
   folder?: string;
   limit?: number;
 }
@@ -40,22 +39,6 @@ export interface MemoryConfig {
   ignorePatterns: string[];
   wikilinks: boolean;
   tagsFormat: 'hashtag' | 'frontmatter' | 'both';
-  enforceStrictGraph: boolean; // Enforce that all notes must be connected to root
-  rootNoteName: string; // Name of the root index file
-}
-
-export interface GraphValidation {
-  isFullyConnected: boolean;
-  totalNotes: number;
-  reachableFromRoot: number;
-  orphanedNotes: string[]; // IDs of orphaned notes
-  unreachableNotes?: MemoryNote[]; // Full details of unreachable notes
-}
-
-export interface CreateNoteOptions {
-  title: string;
-  content: string;
-  folder?: string;
-  linkedFrom?: string | string[]; // Note IDs/titles that should link to this new note
-  frontmatter?: Partial<NoteFrontmatter>;
+  enforceStrictGraph: boolean;
+  rootNoteName: string;
 }

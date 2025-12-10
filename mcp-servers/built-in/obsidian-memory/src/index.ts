@@ -152,49 +152,27 @@ class ObsidianMemoryServer {
           inputSchema: {
             type: 'object',
             properties: {
-              identifier: { 
-                type: 'string', 
+              id: {
+                type: 'string',
                 description: 'Note ID, title, or path'
               }
             },
-            required: ['identifier']
+            required: ['id']
           }
         },
         {
-          name: 'memory_update',
-          description: 'Update an existing note. Use wikilink references [[Note Title]] to maintain knowledge graph connections.',
+          name: 'memory_edit',
+          description: 'Edit a portion of a note by finding and replacing text. Use wikilink references [[Note Title]] to maintain knowledge graph connections.',
           inputSchema: {
             type: 'object',
             properties: {
-              identifier: { type: 'string', description: 'Note ID, title, or path' },
-              content: { type: 'string', description: 'New content in markdown. Use [[Note Title]] syntax to reference other notes and create bidirectional links.' },
-              tags: { type: 'array', items: { type: 'string' } },
-              aliases: { type: 'array', items: { type: 'string' } }
+              id: { type: 'string', description: 'Note ID, title, or path' },
+              old_content: { type: 'string', description: 'The text section to find and replace' },
+              new_content: { type: 'string', description: 'New content in markdown. Use [[Note Title]] syntax to reference other notes and create bidirectional links.' },
+              tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags to add/update' },
+              aliases: { type: 'array', items: { type: 'string' }, description: 'Optional aliases to add/update' }
             },
-            required: ['identifier']
-          }
-        },
-        {
-          name: 'memory_upsert',
-          description: 'Update a note if it exists, or create it if it doesn\'t. Combines create and update logic into one operation. Consider adding [[wiki-links]] to build the knowledge graph.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              identifier: { type: 'string', description: 'Note ID, title, or path. Used as title when creating new notes.' },
-              content: { type: 'string', description: 'Note content in markdown. Use [[Note Title]] syntax to reference other notes and create bidirectional links.' },
-              folder: { type: 'string', description: 'Optional folder path (used when creating new notes)' },
-              tags: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Optional tags'
-              },
-              aliases: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Optional aliases for the note'
-              }
-            },
-            required: ['identifier', 'content']
+            required: ['id', 'old_content', 'new_content']
           }
         },
         {
@@ -203,9 +181,9 @@ class ObsidianMemoryServer {
           inputSchema: {
             type: 'object',
             properties: {
-              identifier: { type: 'string', description: 'Note ID, title, or path' }
+              id: { type: 'string', description: 'Note ID, title, or path' }
             },
-            required: ['identifier']
+            required: ['id']
           }
         },
         {
@@ -220,7 +198,7 @@ class ObsidianMemoryServer {
         },
         {
           name: 'memory_search',
-          description: 'Search notes by content, tags, or title. Supports multiple keywords for broader search.',
+          description: 'Search notes by content, title, or tags. Supports multiple keywords for broader search.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -229,21 +207,12 @@ class ObsidianMemoryServer {
                   { type: 'string', description: 'Single search query' },
                   { type: 'array', items: { type: 'string' }, description: 'Multiple search keywords' }
                 ],
-                description: 'Search query (string) or multiple keywords (array of strings)'
+                description: 'Search query (string) or multiple keywords (array of strings). Searches in title, content, tags, and aliases.'
               },
-              tags: { type: 'array', items: { type: 'string' } },
-              folder: { type: 'string' },
-              limit: { type: 'number', default: 20 }
+              folder: { type: 'string', description: 'Optional folder to limit search to' },
+              limit: { type: 'number', description: 'Maximum number of results (default: 20)' }
             },
             required: ['query']
-          }
-        },
-        {
-          name: 'memory_graph',
-          description: 'Get the knowledge graph of all notes and their connections',
-          inputSchema: {
-            type: 'object',
-            properties: {}
           }
         },
         {
@@ -254,14 +223,6 @@ class ObsidianMemoryServer {
             properties: {}
           }
         },
-        {
-          name: 'memory_validate_graph',
-          description: 'Validate that all notes are connected to the root (no orphaned notes)',
-          inputSchema: {
-            type: 'object',
-            properties: {}
-          }
-        }
       ]
       };
     });
@@ -316,11 +277,11 @@ class ObsidianMemoryServer {
           }
 
           case 'memory_read': {
-            const note = await this.memoryManager.readNote(args.identifier as string);
+            const note = await this.memoryManager.readNote(args.id as string);
             if (!note) {
               throw new McpError(
                 ErrorCode.InvalidRequest,
-                `Note not found: ${args.identifier}`
+                `Note not found: ${args.id}`
               );
             }
             return {
@@ -333,25 +294,46 @@ class ObsidianMemoryServer {
             };
           }
 
-          case 'memory_update': {
-            const updates: any = {};
-            if (args.content) updates.content = args.content;
-            if (args.tags || args.aliases) {
-              updates.frontmatter = {};
-              if (args.tags) updates.frontmatter.tags = args.tags;
-              if (args.aliases) updates.frontmatter.aliases = args.aliases;
-            }
-
-            const note = await this.memoryManager.updateNote(
-              args.identifier as string,
-              updates
+          case 'memory_edit': {
+            const note = await this.memoryManager.editNote(
+              args.id as string,
+              args.old_content as string,
+              args.new_content as string
             );
 
             if (!note) {
               throw new McpError(
                 ErrorCode.InvalidRequest,
-                `Note not found: ${args.identifier}`
+                `Note not found: ${args.id}`
               );
+            }
+
+            // Apply tags/aliases updates if provided
+            if (args.tags || args.aliases) {
+              const updates: any = {
+                frontmatter: {}
+              };
+              if (args.tags) updates.frontmatter.tags = args.tags;
+              if (args.aliases) updates.frontmatter.aliases = args.aliases;
+
+              const updatedNote = await this.memoryManager.updateNote(note.id, updates);
+              if (updatedNote) {
+                return {
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({
+                        success: true,
+                        note: {
+                          id: updatedNote.id,
+                          title: updatedNote.title,
+                          path: updatedNote.path
+                        }
+                      }, null, 2)
+                    }
+                  ]
+                };
+              }
             }
 
             return {
@@ -371,44 +353,8 @@ class ObsidianMemoryServer {
             };
           }
 
-          case 'memory_upsert': {
-            const frontmatter: any = {};
-            if (args.tags) frontmatter.tags = args.tags;
-            if (args.aliases) frontmatter.aliases = args.aliases;
-
-            const note = await this.memoryManager.upsertNote(
-              args.identifier as string,
-              args.content as string,
-              Object.keys(frontmatter).length > 0 ? frontmatter : undefined,
-              args.folder as string | undefined
-            );
-
-            // Check if note has wikilinks for suggestion
-            const hasWikilinks = note.content.includes('[[') && note.content.includes(']]');
-            const suggestion = hasWikilinks
-              ? `Note upserted successfully with links to: ${note.links.join(', ')}`
-              : `Note upserted successfully. Consider adding [[root-memory]] or linking this note from another page to maintain graph connectivity.`;
-
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify({
-                    success: true,
-                    note: {
-                      id: note.id,
-                      title: note.title,
-                      path: note.path
-                    },
-                    reminder: suggestion
-                  }, null, 2)
-                }
-              ]
-            };
-          }
-
           case 'memory_delete': {
-            const success = await this.memoryManager.deleteNote(args.identifier as string);
+            const success = await this.memoryManager.deleteNote(args.id as string);
             return {
               content: [
                 {
@@ -451,7 +397,6 @@ class ObsidianMemoryServer {
             for (const q of queries) {
               const results = await this.memoryManager.searchNotes({
                 query: q,
-                tags: args.tags as string[] | undefined,
                 folder: args.folder as string | undefined,
                 limit: args.limit as number | undefined
               });
@@ -483,18 +428,6 @@ class ObsidianMemoryServer {
             };
           }
 
-          case 'memory_graph': {
-            const graph = await this.memoryManager.getGraph();
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(graph, null, 2)
-                }
-              ]
-            };
-          }
-
           case 'memory_get_root': {
             const rootNote = await this.memoryManager.getRootNote();
             if (!rootNote) {
@@ -508,27 +441,6 @@ class ObsidianMemoryServer {
                 {
                   type: 'text',
                   text: rootNote.content
-                }
-              ]
-            };
-          }
-
-          case 'memory_validate_graph': {
-            const validation = await this.memoryManager.validateGraphConnectivity();
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify({
-                    isFullyConnected: validation.isFullyConnected,
-                    totalNotes: validation.totalNotes,
-                    reachableFromRoot: validation.reachableFromRoot,
-                    orphanedCount: validation.orphanedNotes.length,
-                    orphanedNotes: validation.orphanedNotes,
-                    message: validation.isFullyConnected
-                      ? 'All notes are connected to the root. Graph is healthy.'
-                      : `Warning: ${validation.orphanedNotes.length} orphaned note(s) detected.`
-                  }, null, 2)
                 }
               ]
             };

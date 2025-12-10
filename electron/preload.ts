@@ -35,6 +35,7 @@ const electronAPI = {
   mcpCallTool: (serverId: string, toolName: string, args: any) => ipcRenderer.invoke('mcp:call-tool', serverId, toolName, args),
   mcpListPrompts: (serverId: string) => ipcRenderer.invoke('mcp:list-prompts', serverId),
   mcpGetPrompt: (serverId: string, promptName: string, args?: any) => ipcRenderer.invoke('mcp:get-prompt', serverId, promptName, args),
+  mcpReadResource: (serverId: string, uri: string) => ipcRenderer.invoke('mcp:read-resource', serverId, uri),
 
   // MCP OAuth operations
   mcpStartOAuth: (serverId: string, oauthConfig: any) => ipcRenderer.invoke('mcp:start-oauth', serverId, oauthConfig),

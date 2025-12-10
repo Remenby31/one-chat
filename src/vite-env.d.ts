@@ -25,6 +25,7 @@ interface ElectronAPI {
   mcpCallTool: (serverId: string, toolName: string, args: Record<string, any>) => Promise<{ success: boolean; result?: any; error?: string }>
   mcpListPrompts: (serverId: string) => Promise<{ success: boolean; prompts?: any[]; error?: string }>
   mcpGetPrompt: (serverId: string, promptName: string, args?: Record<string, any>) => Promise<{ success: boolean; messages?: any[]; error?: string }>
+  mcpReadResource: (serverId: string, uri: string) => Promise<{ success: boolean; contents?: any[]; error?: string }>
   onMcpServerExited: (callback: (data: { serverId: string; exitCode: number | null }) => void) => () => void
 
   // MCP OAuth
