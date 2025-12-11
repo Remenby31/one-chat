@@ -469,12 +469,12 @@ class ObsidianMemoryServer {
       return {
         prompts: [
           {
-            name: 'tool_call:memory_index',
-            description: 'Simulated tool call to retrieve the memory vault root index',
+            name: 'tool_call:memory_get_root',
+            description: 'Simulated tool call to retrieve the memory vault root note',
           },
           {
-            name: 'tool_result:memory_index',
-            description: 'Result of the memory_get_root tool call - shows vault structure',
+            name: 'tool_result:memory_get_root',
+            description: 'Result of the memory_get_root tool call - shows vault structure and entry points',
           }
         ]
       };
@@ -485,7 +485,7 @@ class ObsidianMemoryServer {
 
       const { name } = request.params;
 
-      if (name === 'tool_call:memory_index') {
+      if (name === 'tool_call:memory_get_root') {
         // Return structured tool call format for parsing by injection system
         const toolCallData = {
           type: 'tool_call',
@@ -506,7 +506,7 @@ class ObsidianMemoryServer {
         };
       }
 
-      if (name === 'tool_result:memory_index') {
+      if (name === 'tool_result:memory_get_root') {
         try {
           // At this point, ensureInitialized() has guaranteed that MemoryManager is ready
           const rootNote = await this.memoryManager.getRootNote();
@@ -533,7 +533,7 @@ class ObsidianMemoryServer {
         } catch (error) {
           throw new McpError(
             ErrorCode.InternalError,
-            `Failed to get memory index: ${error}`
+            `Failed to get root note: ${error}`
           );
         }
       }

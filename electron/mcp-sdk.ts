@@ -140,6 +140,9 @@ export class MCPSDKManager {
       };
       this.clients.set(config.id, instance);
 
+      // Notify renderer
+      this.notifyStateChange(config.id, 'connecting');
+
       // Connect with timeout
       const connectPromise = client.connect(transport);
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -152,6 +155,9 @@ export class MCPSDKManager {
       instance.state = 'connected';
       console.log(`[MCP-SDK] Server ${config.id} connected successfully`);
 
+      // Notify renderer
+      this.notifyStateChange(config.id, 'connected');
+
       return { success: true };
     } catch (error) {
       console.error(`[MCP-SDK] Failed to start server ${config.id}:`, error);
@@ -161,6 +167,8 @@ export class MCPSDKManager {
       if (instance) {
         instance.state = 'error';
         instance.error = error instanceof Error ? error.message : String(error);
+        // Notify renderer
+        this.notifyStateChange(config.id, 'error', instance.error);
       }
 
       // Notify renderer of exit
@@ -192,6 +200,7 @@ export class MCPSDKManager {
       this.clients.delete(serverId);
 
       // Notify renderer
+      this.notifyStateChange(serverId, 'disconnected');
       this.notifyServerExited(serverId, 0);
 
       console.log(`[MCP-SDK] Server ${serverId} stopped`);
@@ -410,6 +419,17 @@ export class MCPSDKManager {
   }
 
   /**
+   * Get all server states (for state synchronization)
+   */
+  getAllServerStates(): Record<string, { state: MCPClientInstance['state'] | 'disconnected'; error?: string }> {
+    const states: Record<string, { state: MCPClientInstance['state'] | 'disconnected'; error?: string }> = {};
+    for (const [id, instance] of this.clients.entries()) {
+      states[id] = { state: instance.state, error: instance.error };
+    }
+    return states;
+  }
+
+  /**
    * Stop all servers
    */
   async stopAll(): Promise<void> {
@@ -425,6 +445,15 @@ export class MCPSDKManager {
   private notifyServerExited(serverId: string, exitCode: number): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('mcp:server-exited', { serverId, exitCode });
+    }
+  }
+
+  /**
+   * Notify renderer of state change
+   */
+  private notifyStateChange(serverId: string, state: 'connecting' | 'connected' | 'error' | 'disconnected', error?: string): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('mcp:state-changed', { serverId, state, error });
     }
   }
 }

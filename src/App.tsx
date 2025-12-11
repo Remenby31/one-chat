@@ -60,22 +60,30 @@ function App() {
           // Initialize built-in servers (adds new built-in servers, updates existing ones)
           const servers = await initializeBuiltInServers(savedMcpServers, userDataPath)
 
-          setMcpServers(servers)
+          // Ensure all servers have initial state
+          const serversWithState = servers.map(s => ({
+            ...s,
+            state: s.state || 'idle'
+          }))
 
-          // Save initialized state
-          await window.electronAPI.writeConfig('mcpServers.json', servers)
+          setMcpServers(serversWithState)
 
-          // Start enabled servers
-          await mcpManager.startEnabledServers(servers)
+          // Start enabled servers (state will be updated via IPC events)
+          await mcpManager.startEnabledServers(serversWithState)
         } else {
           // No saved servers - initialize with built-in servers only
           const builtInServers = await initializeBuiltInServers([], userDataPath)
 
-          setMcpServers(builtInServers)
-          await window.electronAPI.writeConfig('mcpServers.json', builtInServers)
+          // Ensure all servers have initial state
+          const serversWithState = builtInServers.map(s => ({
+            ...s,
+            state: s.state || 'idle'
+          }))
 
-          // Start enabled built-in servers
-          await mcpManager.startEnabledServers(builtInServers)
+          setMcpServers(serversWithState)
+
+          // Start enabled built-in servers (state will be updated via IPC events)
+          await mcpManager.startEnabledServers(serversWithState)
         }
       } else {
         // Fallback to localStorage for development
@@ -116,38 +124,52 @@ function App() {
     if (window.electronAPI?.onConfigChanged) {
       const handleConfigChanged = (filename: string, data: any) => {
         if (filename === 'mcpServers.json') {
-          setMcpServers(data)
+          // Preserve runtime state from React (SDK events are the source of truth for state)
+          // File watcher should only update config properties, not state
+          setMcpServers(prevServers => {
+            return data.map((newServer: MCPServer) => {
+              const existing = prevServers.find(s => s.id === newServer.id)
+              if (existing) {
+                // Preserve existing runtime state (state, error) from React
+                // Only update config properties from file
+                return {
+                  ...newServer,
+                  state: existing.state,
+                  error: existing.error
+                }
+              }
+              // New server - use state from file or default to idle
+              return { ...newServer, state: newServer.state || 'idle' }
+            })
+          })
         }
       }
 
       window.electronAPI.onConfigChanged(handleConfigChanged)
     }
 
-    // Register listener for MCP server state changes
-    // This keeps React state synchronized with internal state
-    const unsubscribe = mcpManager.onStatusChange((serverId, state, error) => {
-      setMcpServers(prevServers => {
-        const updatedServers = prevServers.map(server =>
-          server.id === serverId
-            ? { ...server, state, error }
-            : server
+    // Listen for MCP server state changes from main process
+    // State is runtime-only, NOT persisted to file (config file = configuration only)
+    let stateChangeUnsubscribe: (() => void) | undefined
+    if (window.electronAPI?.onMcpStateChanged) {
+      stateChangeUnsubscribe = window.electronAPI.onMcpStateChanged((data) => {
+        const { serverId, state, error } = data
+
+        setMcpServers(prevServers =>
+          prevServers.map(server =>
+            server.id === serverId
+              ? { ...server, state: state as MCPServer['state'], error }
+              : server
+          )
         )
-
-        // Persist updated state to storage (file watcher will sync back)
-        if (window.electronAPI) {
-          window.electronAPI.writeConfig('mcpServers.json', updatedServers)
-            .catch(error => console.error('[App] Failed to persist MCP server state:', error))
-        } else {
-          localStorage.setItem('mcpServers', JSON.stringify(updatedServers))
-        }
-
-        return updatedServers
+        // Note: State is NOT written to file - it's runtime only
+        // The SDK is the source of truth for state
       })
-    })
+    }
 
     // Cleanup: stop all servers and unregister listener on unmount
     return () => {
-      unsubscribe()
+      stateChangeUnsubscribe?.()
       if (window.electronAPI) {
         mcpManager.stopAllServers(mcpServers)
       }

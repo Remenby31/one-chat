@@ -36,6 +36,8 @@ const electronAPI = {
   mcpListPrompts: (serverId: string) => ipcRenderer.invoke('mcp:list-prompts', serverId),
   mcpGetPrompt: (serverId: string, promptName: string, args?: any) => ipcRenderer.invoke('mcp:get-prompt', serverId, promptName, args),
   mcpReadResource: (serverId: string, uri: string) => ipcRenderer.invoke('mcp:read-resource', serverId, uri),
+  mcpGetServerState: (serverId: string) => ipcRenderer.invoke('mcp:get-server-state', serverId),
+  mcpGetAllServerStates: () => ipcRenderer.invoke('mcp:get-all-server-states'),
 
   // MCP OAuth operations
   mcpStartOAuth: (serverId: string, oauthConfig: any) => ipcRenderer.invoke('mcp:start-oauth', serverId, oauthConfig),
@@ -56,6 +58,14 @@ const electronAPI = {
     ipcRenderer.on('mcp:server-exited', handler);
     return () => {
       ipcRenderer.removeListener('mcp:server-exited', handler);
+    };
+  },
+
+  onMcpStateChanged: (callback: (data: { serverId: string; state: string; error?: string }) => void) => {
+    const handler = (_event: any, data: { serverId: string; state: string; error?: string }) => callback(data);
+    ipcRenderer.on('mcp:state-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('mcp:state-changed', handler);
     };
   },
 

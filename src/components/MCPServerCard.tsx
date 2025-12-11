@@ -20,6 +20,7 @@ const STATE_CONFIG: Record<MCPServerState, { label: string; color: string }> = {
   idle: { label: 'Idle', color: 'gray' },
   connecting: { label: 'Connecting', color: 'blue' },
   connected: { label: 'Connected', color: 'green' },
+  disconnected: { label: 'Disconnected', color: 'gray' },
   error: { label: 'Error', color: 'red' },
   auth_required: { label: 'Auth Required', color: 'orange' },
 }
@@ -147,7 +148,7 @@ export function MCPServerCard({
           </div>
 
           <Switch
-            checked={server.enabled}
+            checked={server.state === 'connected' || server.state === 'connecting'}
             onCheckedChange={(checked) => onToggle(server.id, checked)}
             className="data-[state=checked]:bg-primary"
             disabled={isActive}

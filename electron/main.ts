@@ -704,6 +704,14 @@ ipcMain.handle('mcp:read-resource', async (_event, serverId: string, uri: string
   return mcpSDKManager.readResource(serverId, uri);
 });
 
+ipcMain.handle('mcp:get-server-state', async (_event, serverId: string) => {
+  return { success: true, state: mcpSDKManager.getServerState(serverId) };
+});
+
+ipcMain.handle('mcp:get-all-server-states', async () => {
+  return { success: true, states: mcpSDKManager.getAllServerStates() };
+});
+
 // ========================================
 // IPC Handlers - OAuth
 // ========================================

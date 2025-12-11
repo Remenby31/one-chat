@@ -3,74 +3,49 @@
  *
  * All MCP operations are delegated to Electron's main process
  * which uses the official @modelcontextprotocol/sdk.
+ *
+ * State management: Server state is managed entirely by the SDK
+ * and synchronized to React via IPC events (mcp:state-changed).
  */
 
 import type {
   MCPServer,
-  MCPServerState,
   MCPTool,
   MCPServerCapabilities,
   MCPTestResult,
 } from '@/types/mcp';
 
-type StatusCallback = (serverId: string, state: MCPServerState, error?: string) => void;
-
 export class MCPManager {
-  private statusCallbacks = new Set<StatusCallback>();
-  private serverStates = new Map<string, { state: MCPServerState; error?: string }>();
-
-  constructor() {
-    // Listen for server exit events from Electron
-    if (window.electronAPI?.onMcpServerExited) {
-      window.electronAPI.onMcpServerExited(({ serverId, exitCode }) => {
-        const newState: MCPServerState = exitCode === 0 || exitCode === null ? 'idle' : 'error';
-        const error = exitCode !== 0 && exitCode !== null ? `Process exited with code ${exitCode}` : undefined;
-
-        this.updateState(serverId, newState, error);
-      });
-    }
-  }
+  // No local state - all state comes from SDK via IPC events
 
   /**
    * Start an MCP server
+   * State transitions are handled by SDK and sent via IPC events
    */
   async startServer(server: MCPServer): Promise<void> {
     if (!window.electronAPI?.mcpStartServer) {
       throw new Error('MCP functionality requires Electron');
     }
 
-    // Skip if already connected
-    const currentState = this.serverStates.get(server.id);
-    if (currentState?.state === 'connected' || currentState?.state === 'connecting') {
+    // Skip if already connected/connecting (based on passed state)
+    if (server.state === 'connected' || server.state === 'connecting') {
       return;
     }
 
-    // Update state to connecting
-    this.updateState(server.id, 'connecting');
+    const result = await window.electronAPI.mcpStartServer(server);
 
-    try {
-      const result = await window.electronAPI.mcpStartServer(server);
-
-      if (result.success) {
-        this.updateState(server.id, 'connected');
-      } else if (result.authRequired) {
-        this.updateState(server.id, 'auth_required', result.error);
+    if (!result.success) {
+      if (result.authRequired) {
         throw new Error(result.error || 'Authentication required');
       } else {
-        this.updateState(server.id, 'error', result.error);
         throw new Error(result.error || 'Failed to start server');
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (this.serverStates.get(server.id)?.state !== 'auth_required') {
-        this.updateState(server.id, 'error', errorMessage);
-      }
-      throw error;
     }
   }
 
   /**
    * Stop an MCP server
+   * State transitions are handled by SDK and sent via IPC events
    */
   async stopServer(serverId: string): Promise<void> {
     if (!window.electronAPI?.mcpStopServer) {
@@ -82,8 +57,6 @@ export class MCPManager {
     if (!result.success && result.error) {
       console.warn(`[MCPManager] Stop server warning: ${result.error}`);
     }
-
-    this.updateState(serverId, 'idle');
   }
 
   /**
@@ -208,7 +181,20 @@ export class MCPManager {
   }
 
   /**
+   * Get the actual server state from SDK (source of truth)
+   */
+  async getActualServerState(serverId: string): Promise<string> {
+    if (!window.electronAPI?.mcpGetServerState) {
+      return 'disconnected';
+    }
+
+    const result = await window.electronAPI.mcpGetServerState(serverId);
+    return result.success ? result.state : 'disconnected';
+  }
+
+  /**
    * Test connection to an MCP server
+   * Uses SDK state as source of truth, not React state
    */
   async testConnection(server: MCPServer): Promise<MCPTestResult> {
     if (!window.electronAPI?.mcpStartServer) {
@@ -218,12 +204,15 @@ export class MCPManager {
       };
     }
 
-    const wasConnected = this.serverStates.get(server.id)?.state === 'connected';
+    // Check actual SDK state (source of truth), not React state
+    const actualState = await this.getActualServerState(server.id);
+    const wasActuallyConnected = actualState === 'connected';
     let shouldStop = false;
 
     try {
-      if (!wasConnected) {
-        await this.startServer(server);
+      if (!wasActuallyConnected) {
+        // Server not actually connected in SDK, need to start it
+        await this.startServer({ ...server, state: actualState as MCPServer['state'] });
         shouldStop = true;
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -266,37 +255,6 @@ export class MCPManager {
   }
 
   /**
-   * Get current state of a server
-   */
-  getServerState(serverId: string): MCPServerState {
-    return this.serverStates.get(serverId)?.state || 'idle';
-  }
-
-  /**
-   * Get server error message
-   */
-  getServerError(serverId: string): string | undefined {
-    return this.serverStates.get(serverId)?.error;
-  }
-
-  /**
-   * Check if a server is connected
-   */
-  isConnected(serverId: string): boolean {
-    return this.serverStates.get(serverId)?.state === 'connected';
-  }
-
-  /**
-   * Register a callback for status changes
-   */
-  onStatusChange(callback: StatusCallback): () => void {
-    this.statusCallbacks.add(callback);
-    return () => {
-      this.statusCallbacks.delete(callback);
-    };
-  }
-
-  /**
    * Start all enabled servers
    */
   async startEnabledServers(servers: MCPServer[]): Promise<void> {
@@ -328,21 +286,6 @@ export class MCPManager {
     if (!result.success) {
       throw new Error(result.error || 'Failed to start OAuth flow');
     }
-  }
-
-  /**
-   * Update server state and notify listeners
-   */
-  private updateState(serverId: string, state: MCPServerState, error?: string): void {
-    this.serverStates.set(serverId, { state, error });
-
-    this.statusCallbacks.forEach(callback => {
-      try {
-        callback(serverId, state, error);
-      } catch (e) {
-        console.error('[MCPManager] Status callback error:', e);
-      }
-    });
   }
 }
 

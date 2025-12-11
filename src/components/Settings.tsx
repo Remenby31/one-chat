@@ -184,27 +184,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     // Listener stays active for the lifetime of the component
   }, [])
 
-  // Subscribe to MCP server state changes
-  useEffect(() => {
-    const unsubscribe = mcpManager.onStatusChange((serverId, state, error) => {
-      setMcpServers(prevServers => {
-        const updatedServers = prevServers.map(server =>
-          server.id === serverId ? { ...server, state, error } : server
-        )
-
-        // Persist state changes to file (file watcher will sync oauthConfig back)
-        if (window.electronAPI) {
-          window.electronAPI.writeConfig('mcpServers.json', updatedServers)
-        } else {
-          localStorage.setItem("mcpServers", JSON.stringify(updatedServers))
-        }
-
-        return updatedServers
-      })
-    })
-
-    return unsubscribe
-  }, [])
+  // State synchronization is handled by App.tsx via IPC events (mcp:state-changed)
 
   // Load environment variables when dialog opens
   useEffect(() => {
@@ -460,10 +440,13 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
 
   // MCP server management
   const saveMcpServers = async (updatedServers: MCPServer[]) => {
+    // Strip runtime state before saving (state is managed by SDK events)
+    const serversToSave = updatedServers.map(({ state, error, ...server }) => server)
+
     if (window.electronAPI) {
-      await window.electronAPI.writeConfig('mcpServers.json', updatedServers)
+      await window.electronAPI.writeConfig('mcpServers.json', serversToSave)
     } else {
-      localStorage.setItem("mcpServers", JSON.stringify(updatedServers))
+      localStorage.setItem("mcpServers", JSON.stringify(serversToSave))
     }
     setMcpServers(updatedServers)
   }

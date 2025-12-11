@@ -53,7 +53,7 @@ export interface OpenAIMessage {
 /**
  * Determine the prompt type from its name
  */
-function detectPromptType(promptName: string): ConventionalPromptType | null {
+export function detectPromptType(promptName: string): ConventionalPromptType | null {
   const normalized = promptName.toLowerCase().trim();
 
   // Exact matches
@@ -87,8 +87,8 @@ export async function fetchAllConventionalPrompts(
 ): Promise<ConventionalPrompt[]> {
   const allPrompts: ConventionalPrompt[] = [];
 
-  // Get all connected servers
-  const connectedServers = servers.filter(s => s.enabled && mcpManager.isConnected(s.id));
+  // Get all connected servers (state comes from SDK via IPC)
+  const connectedServers = servers.filter(s => s.enabled && s.state === 'connected');
 
   for (const server of connectedServers) {
     try {

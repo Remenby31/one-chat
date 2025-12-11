@@ -2,11 +2,12 @@
  * MCP Types - Simplified for SDK-based implementation
  */
 
-// Server state (simplified from ~20 states to 5)
+// Server state (simplified from ~20 states to 6)
 export type MCPServerState =
   | 'idle'           // Not started
   | 'connecting'     // Starting up
   | 'connected'      // Running and ready
+  | 'disconnected'   // Was connected, now disconnected (SDK state)
   | 'error'          // Error occurred
   | 'auth_required'; // OAuth authentication needed
 

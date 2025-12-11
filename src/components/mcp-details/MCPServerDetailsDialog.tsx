@@ -6,10 +6,12 @@ import { MCPOverview } from "./MCPOverview"
 import { MCPToolsList } from "./MCPToolsList"
 import { MCPResourcesList } from "./MCPResourcesList"
 import { MCPPromptsList } from "./MCPPromptsList"
+import { MCPInjectedPrompts } from "./MCPInjectedPrompts"
 import { MCPConfigEditor } from "./MCPConfigEditor"
 import { useMCPDetails } from "@/lib/useMCPDetails"
+import { mcpManager } from "@/lib/mcpManager"
 import { cn } from "@/lib/utils"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 interface MCPServerDetailsDialogProps {
   server: MCPServer | null
@@ -24,7 +26,30 @@ export function MCPServerDetailsDialog({
   onOpenChange,
   onServerUpdate,
 }: MCPServerDetailsDialogProps) {
+  const [actualState, setActualState] = useState<MCPServer['state']>(server?.state || 'idle')
   const { tools, resources, prompts, isLoading } = useMCPDetails(server || undefined)
+
+  // Sync actual SDK state when dialog opens
+  useEffect(() => {
+    if (open && server) {
+      mcpManager.getActualServerState(server.id).then((state) => {
+        const mappedState = state as MCPServer['state']
+        setActualState(mappedState)
+
+        // If actual state differs from React state, notify parent to update
+        if (mappedState !== server.state && onServerUpdate) {
+          onServerUpdate({ ...server, state: mappedState })
+        }
+      })
+    }
+  }, [open, server?.id])
+
+  // Update actualState when server prop changes
+  useEffect(() => {
+    if (server) {
+      setActualState(server.state)
+    }
+  }, [server?.state])
 
   // Close on Escape key
   useEffect(() => {
@@ -40,12 +65,15 @@ export function MCPServerDetailsDialog({
 
   if (!server) return null
 
+  // Use actualState for display (synced with SDK)
+  const displayState = actualState
+
   const toolsCount = isLoading ? '...' : tools.length
   const resourcesCount = isLoading ? '...' : resources.length
   const promptsCount = isLoading ? '...' : prompts.length
 
   const getStatusColor = () => {
-    switch (server.state) {
+    switch (displayState) {
       case 'connected':
         return 'text-green-400'
       case 'error':
@@ -60,14 +88,14 @@ export function MCPServerDetailsDialog({
   }
 
   const getStatusIcon = () => {
-    if (server.state === 'connected') {
+    if (displayState === 'connected') {
       return <CheckCircle className="h-4 w-4" />
     }
     return <Circle className="h-4 w-4" />
   }
 
   const getStatusLabel = () => {
-    switch (server.state) {
+    switch (displayState) {
       case 'idle':
         return 'Idle'
       case 'connecting':
@@ -78,6 +106,8 @@ export function MCPServerDetailsDialog({
         return 'Error'
       case 'auth_required':
         return 'Auth Required'
+      case 'disconnected':
+        return 'Disconnected'
       default:
         return 'Unknown'
     }
@@ -139,7 +169,7 @@ export function MCPServerDetailsDialog({
               <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="tools" className="gap-2">
               Tools
-              {server.state === 'connected' && (
+              {displayState === 'connected' && (
                 <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
                   {toolsCount}
                 </span>
@@ -147,7 +177,7 @@ export function MCPServerDetailsDialog({
             </TabsTrigger>
             <TabsTrigger value="resources" className="gap-2">
               Resources
-              {server.state === 'connected' && (
+              {displayState === 'connected' && (
                 <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
                   {resourcesCount}
                 </span>
@@ -155,12 +185,13 @@ export function MCPServerDetailsDialog({
             </TabsTrigger>
             <TabsTrigger value="prompts" className="gap-2">
               Prompts
-              {server.state === 'connected' && (
+              {displayState === 'connected' && (
                 <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
                   {promptsCount}
                 </span>
               )}
             </TabsTrigger>
+              <TabsTrigger value="injection">Injection</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
               <TabsTrigger value="config">Config</TabsTrigger>
             </TabsList>
@@ -168,7 +199,7 @@ export function MCPServerDetailsDialog({
 
           <div className="flex-1 overflow-hidden px-6 pb-6">
             <TabsContent value="overview" className="h-full mt-4 overflow-y-auto">
-              <MCPOverview server={server} />
+              <MCPOverview server={{ ...server, state: displayState }} />
             </TabsContent>
 
             <TabsContent value="tools" className="h-full mt-4 overflow-y-auto">
@@ -181,6 +212,10 @@ export function MCPServerDetailsDialog({
 
             <TabsContent value="prompts" className="h-full mt-4 overflow-y-auto">
               <MCPPromptsList server={server} />
+            </TabsContent>
+
+            <TabsContent value="injection" className="h-full mt-4 overflow-y-auto">
+              <MCPInjectedPrompts server={server} />
             </TabsContent>
 
             <TabsContent value="logs" className="h-full mt-4 overflow-y-auto">
