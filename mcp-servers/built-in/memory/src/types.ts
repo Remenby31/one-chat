@@ -35,7 +35,7 @@ export interface SearchOptions {
 
 export interface MemoryConfig {
   vaultPath: string;
-  obsidianCompatible: boolean;
+  markdownCompatible: boolean;
   ignorePatterns: string[];
   wikilinks: boolean;
   tagsFormat: 'hashtag' | 'frontmatter' | 'both';

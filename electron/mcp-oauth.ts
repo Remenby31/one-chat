@@ -123,14 +123,12 @@ export class ElectronOAuthProvider implements OAuthClientProvider {
       this.onTokensUpdated(tokens);
     }
 
-    console.log(`[MCP-OAuth] Tokens saved for server ${this.serverId}`);
   }
 
   /**
    * Redirect user to authorization URL
    */
   async redirectToAuthorization(url: URL): Promise<void> {
-    console.log(`[MCP-OAuth] Redirecting to authorization: ${url.toString()}`);
     await shell.openExternal(url.toString());
   }
 
@@ -146,8 +144,6 @@ export class ElectronOAuthProvider implements OAuthClientProvider {
       codeVerifier: verifier,
       timestamp: Date.now(),
     });
-
-    console.log(`[MCP-OAuth] Code verifier saved for server ${this.serverId}`);
   }
 
   /**
@@ -186,7 +182,6 @@ export class ElectronOAuthProvider implements OAuthClientProvider {
   async saveClientInformation(info: OAuthClientInformation): Promise<void> {
     this.config.clientId = info.client_id;
     this.config.clientSecret = info.client_secret;
-    console.log(`[MCP-OAuth] Client information saved for server ${this.serverId}`);
   }
 }
 
@@ -230,8 +225,6 @@ export async function startOAuthFlow(
 
   // Open in browser
   await shell.openExternal(authUrl.toString());
-
-  console.log(`[MCP-OAuth] OAuth flow started for server ${serverId}`);
 
   return { state, codeVerifier };
 }
@@ -279,7 +272,6 @@ export async function handleOAuthCallback(
   // We need the token URL from the server config
   // This should be passed when the OAuth flow was initiated
   // For now, return partial result - the renderer will complete the token exchange
-  console.log(`[MCP-OAuth] Callback received for server ${oauthState.serverId}`);
 
   return {
     serverId: oauthState.serverId,
@@ -335,8 +327,6 @@ export async function exchangeCodeForTokens(
 
   const tokens = await response.json();
 
-  console.log(`[MCP-OAuth] Token exchange successful`);
-
   return {
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
@@ -387,8 +377,6 @@ export async function refreshAccessToken(config: MCPOAuthConfig): Promise<OAuthT
   }
 
   const tokens = await response.json();
-
-  console.log(`[MCP-OAuth] Token refresh successful`);
 
   return {
     access_token: tokens.access_token,

@@ -21,10 +21,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const DEFAULT_CONFIG: MemoryConfig = {
-  vaultPath: process.env.OBSIDIAN_VAULT_PATH ||
+  vaultPath: process.env.MEMORY_VAULT_PATH ||
              path.resolve(__dirname, '../../../../vault'),
-  obsidianCompatible: true,
-  ignorePatterns: ['.obsidian', '.trash', '.git'],
+  markdownCompatible: true,
+  ignorePatterns: ['.trash', '.git'],
   wikilinks: true,
   tagsFormat: 'both',
   enforceStrictGraph: false,
@@ -78,7 +78,7 @@ function extractSearchSnippet(content: string, queries: string | string[], conte
   return snippet;
 }
 
-class ObsidianMemoryServer {
+class MemoryServer {
   private server: Server;
   private memoryManager: MemoryManager;
   private readonly initPromise: Promise<void>;
@@ -86,7 +86,7 @@ class ObsidianMemoryServer {
   constructor() {
     this.server = new Server(
       {
-        name: 'obsidian-memory-mcp',
+        name: 'memory-mcp',
         version: '1.0.0',
       },
       {
@@ -103,7 +103,7 @@ class ObsidianMemoryServer {
     this.initPromise = this.memoryManager
       .initialize()
       .catch(err => {
-        console.error('[ObsidianMemoryServer] Initialization failed:', err);
+        console.error('[MemoryServer] Initialization failed:', err);
         throw err;
       });
 
@@ -551,10 +551,8 @@ class ObsidianMemoryServer {
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-
-    console.error('Obsidian Memory MCP Server started');
   }
 }
 
-const server = new ObsidianMemoryServer();
+const server = new MemoryServer();
 server.start().catch(console.error);

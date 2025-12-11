@@ -94,33 +94,25 @@ All notes should be accessible from this root note or connected through other no
       .join('/');
 
     const pattern = `${vaultPathNormalized}/**/*.md`;
-    console.error(`[rebuildIndex] Vault path: ${this.config.vaultPath}`);
-    console.error(`[rebuildIndex] Normalized path: ${vaultPathNormalized}`);
-    console.error(`[rebuildIndex] Glob pattern: ${pattern}`);
 
     // Normalize ignore patterns to use forward slashes
     const ignorePatterns = this.config.ignorePatterns.map(p =>
       `${vaultPathNormalized}/${p}`
     );
-    console.error(`[rebuildIndex] Ignore patterns:`, ignorePatterns);
 
     const files = await glob(pattern, {
       ignore: ignorePatterns
     });
 
-    console.error(`[rebuildIndex] Found ${files.length} files:`, files);
-
     for (const file of files) {
       try {
         const note = await this.loadNoteFromFile(file);
-        console.error(`[rebuildIndex] Loaded note: ${note.id} (isRoot: ${note.isRoot}) from ${file}`);
         this.notesIndex.set(note.id, note);
       } catch (error) {
         console.error(`Failed to load note ${file}:`, error);
       }
     }
 
-    console.error(`[rebuildIndex] Total notes in index: ${this.notesIndex.size}`);
     await this.updateBacklinks();
     this.buildSearchIndex();
   }
@@ -330,42 +322,6 @@ All notes should be accessible from this root note or connected through other no
     this.buildSearchIndex();
 
     return updatedNote;
-  }
-
-  /**
-   * Upsert a note: Update if exists, create if doesn't exist
-   * Combines the logic of both createNote and updateNote
-   */
-  async upsertNote(
-    identifier: string,
-    content: string,
-    frontmatter?: Partial<NoteFrontmatter>,
-    folder?: string
-  ): Promise<MemoryNote> {
-    // Try to find existing note
-    const existingNote = await this.readNote(identifier);
-
-    if (existingNote) {
-      // Note exists: use update logic
-      const updates = {
-        content,
-        frontmatter
-      };
-
-      const updatedNote = await this.updateNote(existingNote.id, updates);
-      if (!updatedNote) {
-        throw new Error(`Failed to update note: ${identifier}`);
-      }
-      return updatedNote;
-    }
-
-    // Note doesn't exist: use create logic
-    // Use identifier as title if it looks like a title, otherwise generate new note
-    const title = identifier.includes('/') || identifier.startsWith('root-')
-      ? 'Untitled'
-      : identifier;
-
-    return await this.createNote(title, content, folder, frontmatter);
   }
 
   async deleteNote(identifier: string): Promise<boolean> {

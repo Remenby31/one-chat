@@ -59,12 +59,9 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
 
   // Handle OAuth callback
   useOAuthCallback(
-    (serverId, oauthConfig) => {
-      console.log('[MCPDialog] OAuth callback received:', { serverId, oauthConfig })
-
+    (_serverId, oauthConfig) => {
       // Check if we should auto-save (from JSON import flow)
       const shouldAutoSave = autoSaveAfterOAuth
-      console.log('[MCPDialog] Auto-save after OAuth:', shouldAutoSave)
 
       // Update formData with received tokens
       setFormData(prev => {
@@ -97,7 +94,6 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
 
       // Auto-save if flag was set
       if (shouldAutoSave) {
-        console.log('[MCPDialog] Auto-saving server after OAuth...')
 
         // Use current formData values
         setFormData(prev => {
@@ -125,8 +121,6 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
 
           return prev
         })
-      } else {
-        console.log('[MCPDialog] OAuth complete, ready to add server')
       }
     },
     (error) => {
@@ -380,13 +374,6 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
       showWarningToast('Missing OAuth configuration', 'Please configure OAuth URLs first')
       return
     }
-
-    console.log('[MCPDialog] Starting OAuth with config:', {
-      clientId: formData.oauthConfig.clientId,
-      authUrl: formData.oauthConfig.authUrl,
-      tokenUrl: formData.oauthConfig.tokenUrl,
-      scopes: formData.oauthConfig.scopes
-    })
 
     try {
       const serverId = server?.id || 'temp'

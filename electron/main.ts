@@ -63,7 +63,6 @@ if (process.defaultApp) {
 }
 
 function handleDeepLink(url: string) {
-  console.log('[Protocol] Deep link received:', url);
   if (mainWindow) {
     mainWindow.webContents.send('oauth:callback', url);
   }
@@ -72,11 +71,9 @@ function handleDeepLink(url: string) {
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  console.log('[Protocol] Another instance is running, quitting...');
   app.quit();
 } else {
   app.on('second-instance', (_event, commandLine) => {
-    console.log('[Protocol] Second instance detected, focusing main window');
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -89,7 +86,6 @@ if (!gotTheLock) {
 
   app.on('open-url', (event, url) => {
     event.preventDefault();
-    console.log('[Protocol] open-url event:', url);
     handleDeepLink(url);
   });
 }
@@ -102,11 +98,9 @@ function setupConfigFileWatcher() {
   const mcpServersPath = path.join(app.getPath('userData'), 'mcpServers.json');
   let debounceTimer: NodeJS.Timeout | null = null;
 
-  console.log('[FileWatcher] Watching config file:', mcpServersPath);
 
   const watcher = fsSync.watch(mcpServersPath, (eventType) => {
     if (eventType === 'change') {
-      console.log('[FileWatcher] Config file changed');
       if (debounceTimer) clearTimeout(debounceTimer);
 
       debounceTimer = setTimeout(async () => {
@@ -120,7 +114,7 @@ function setupConfigFileWatcher() {
             console.error('[FileWatcher] JSON parse error:', parseError.message);
             const extracted = extractValidJSON(content);
             if (extracted) {
-              console.log('[FileWatcher] Successfully extracted valid JSON, repairing file...');
+              console.warn('[FileWatcher] Repaired corrupted JSON');
               data = extracted;
               const backupPath = `${mcpServersPath}.corrupted.${Date.now()}`;
               await fs.copyFile(mcpServersPath, backupPath);
@@ -132,7 +126,6 @@ function setupConfigFileWatcher() {
             }
           }
 
-          console.log('[FileWatcher] Broadcasting config change to all renderers');
           BrowserWindow.getAllWindows().forEach(win => {
             win.webContents.send('config:changed', 'mcpServers.json', data);
           });
@@ -144,7 +137,6 @@ function setupConfigFileWatcher() {
   });
 
   app.on('before-quit', () => {
-    console.log('[FileWatcher] Closing file watcher');
     watcher.close();
   });
 }
@@ -609,7 +601,6 @@ ipcMain.handle('thread:list', async () => {
 
     const files = await fs.readdir(conversationsDir);
     const threadFiles = files.filter(f => f.startsWith('thread_') && f.endsWith('.json'));
-    console.log(`[Threads] Found ${threadFiles.length} thread files`);
     return threadFiles;
   } catch (error: any) {
     console.error('[Threads] Failed to list threads:', error);
@@ -624,7 +615,6 @@ ipcMain.handle('thread:delete', async (_event, filename: string) => {
     const filePath = path.join(conversationsDir, filename);
 
     await fs.unlink(filePath);
-    console.log(`[Threads] Deleted thread file: ${filename}`);
     return { success: true };
   } catch (error: any) {
     console.error('[Threads] Failed to delete thread:', error);
@@ -642,7 +632,6 @@ ipcMain.handle('mcp:start-server', async (_event, server: any) => {
   // Handle OAuth token refresh if needed
   if (oauthConfig && needsTokenRefresh(oauthConfig)) {
     try {
-      console.log(`[MCP] Refreshing OAuth token for server ${id}`);
       const newTokens = await refreshAccessToken(oauthConfig);
       oauthConfig.accessToken = newTokens.access_token;
       if (newTokens.refresh_token) {

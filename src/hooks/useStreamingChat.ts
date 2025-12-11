@@ -245,15 +245,6 @@ export function useStreamingChat(
           requestBody.tools = openaiTools
         }
 
-        // Log raw JSON request for debugging
-        console.log(`📤 API Request #${turnCount}`, {
-          model: requestBody.model,
-          messageCount: requestBody.messages.length,
-          toolCount: requestBody.tools?.length || 0,
-          stream: requestBody.stream,
-        })
-        console.log('📋 Raw JSON Messages:', JSON.stringify(requestBody, null, 2))
-
         const response = await fetch(`${apiKey.baseURL}/chat/completions`, {
           method: 'POST',
           headers: {

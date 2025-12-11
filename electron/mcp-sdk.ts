@@ -72,7 +72,6 @@ export class MCPSDKManager {
         await this.stopServer(config.id);
       }
 
-      console.log(`[MCP-SDK] Starting server ${config.id}: ${config.command} ${config.args?.join(' ') || ''}`);
 
       let transport: Transport;
 
@@ -153,7 +152,6 @@ export class MCPSDKManager {
 
       // Update state
       instance.state = 'connected';
-      console.log(`[MCP-SDK] Server ${config.id} connected successfully`);
 
       // Notify renderer
       this.notifyStateChange(config.id, 'connected');
@@ -191,7 +189,6 @@ export class MCPSDKManager {
         return { success: true }; // Already stopped
       }
 
-      console.log(`[MCP-SDK] Stopping server ${serverId}`);
 
       // Close the client connection
       await instance.client.close();
@@ -203,7 +200,6 @@ export class MCPSDKManager {
       this.notifyStateChange(serverId, 'disconnected');
       this.notifyServerExited(serverId, 0);
 
-      console.log(`[MCP-SDK] Server ${serverId} stopped`);
       return { success: true };
     } catch (error) {
       console.error(`[MCP-SDK] Failed to stop server ${serverId}:`, error);
@@ -433,10 +429,8 @@ export class MCPSDKManager {
    * Stop all servers
    */
   async stopAll(): Promise<void> {
-    console.log('[MCP-SDK] Stopping all servers...');
     const stopPromises = Array.from(this.clients.keys()).map(id => this.stopServer(id));
     await Promise.allSettled(stopPromises);
-    console.log('[MCP-SDK] All servers stopped');
   }
 
   /**

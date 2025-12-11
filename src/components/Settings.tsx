@@ -169,13 +169,29 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     loadConfig()
   }, [])
 
-  // Sync MCP servers state with config file via file watcher
+  // Sync MCP servers config with file watcher (preserving runtime state)
   useEffect(() => {
     if (!window.electronAPI?.onConfigChanged) return
 
     const handleConfigChanged = (filename: string, data: MCPServer[]) => {
       if (filename === 'mcpServers.json') {
-        setMcpServers(data)
+        // Preserve runtime state (state, error) from current React state
+        // File only contains config properties, not runtime state
+        setMcpServers(prevServers => {
+          return data.map((newServer: MCPServer) => {
+            const existing = prevServers.find(s => s.id === newServer.id)
+            if (existing) {
+              // Preserve existing runtime state from React
+              return {
+                ...newServer,
+                state: existing.state || 'idle',
+                error: existing.error
+              }
+            }
+            // New server - default to idle
+            return { ...newServer, state: newServer.state || 'idle' }
+          })
+        })
       }
     }
 
@@ -184,7 +200,27 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     // Listener stays active for the lifetime of the component
   }, [])
 
-  // State synchronization is handled by App.tsx via IPC events (mcp:state-changed)
+  // Listen for MCP server state changes from main process
+  // This ensures Settings.tsx stays in sync with SDK state
+  useEffect(() => {
+    if (!window.electronAPI?.onMcpStateChanged) return
+
+    const unsubscribe = window.electronAPI.onMcpStateChanged((data) => {
+      const { serverId, state, error } = data
+
+      setMcpServers(prevServers =>
+        prevServers.map(server =>
+          server.id === serverId
+            ? { ...server, state: state as MCPServer['state'], error }
+            : server
+        )
+      )
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
 
   // Load environment variables when dialog opens
   useEffect(() => {

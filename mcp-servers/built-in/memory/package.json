@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-memory-mcp",
+  "name": "memory-mcp",
   "version": "1.0.0",
-  "description": "MCP server for Obsidian-compatible memory system",
+  "description": "MCP server for persistent memory system using markdown files",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

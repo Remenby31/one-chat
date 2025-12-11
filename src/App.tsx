@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { ChatThread } from '@/components/chat/ChatThread'
@@ -29,8 +29,16 @@ function App() {
   const threadStore = useThreadStore()
   const chatStore = useChatStore()
 
+  // Refs to prevent double initialization in StrictMode
+  const configInitialized = useRef(false)
+  const threadsInitialized = useRef(false)
+
   // Load saved model and MCP servers on mount
   useEffect(() => {
+    // Prevent double initialization in StrictMode
+    if (configInitialized.current) return
+    configInitialized.current = true
+
     const loadConfig = async () => {
       if (window.electronAPI) {
         // Use Electron file storage
@@ -178,6 +186,10 @@ function App() {
 
   // Load threads and current thread on mount
   useEffect(() => {
+    // Prevent double initialization in StrictMode
+    if (threadsInitialized.current) return
+    threadsInitialized.current = true
+
     const loadThreads = async () => {
       // Load thread list (for sidebar display)
       await threadStore.loadThreads()

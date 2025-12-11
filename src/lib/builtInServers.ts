@@ -24,7 +24,7 @@ export interface BuiltInServerDefinition {
   command: string
   // Args will be filled in by getBuiltInServers() with the correct path
   // based on whether we're in dev or production
-  relativeServerPath: string // e.g., 'mcp-servers/built-in/obsidian-memory/dist/index.js'
+  relativeServerPath: string // e.g., 'mcp-servers/built-in/memory/dist/index.js'
   env?: Record<string, string>
   requiresAuth: boolean
   authType: 'oauth' | 'token' | 'none'
@@ -36,17 +36,17 @@ export interface BuiltInServerDefinition {
  */
 export const BUILT_IN_SERVERS: BuiltInServerDefinition[] = [
   {
-    id: 'builtin-obsidian-memory',
-    name: 'Obsidian Memory',
-    description: 'Persistent memory system compatible with Obsidian vault format. Store and retrieve conversation context, notes, and knowledge across sessions.',
+    id: 'builtin-memory',
+    name: 'Memory',
+    description: 'Persistent memory system using markdown files. Store and retrieve conversation context, notes, and knowledge across sessions.',
     icon: 'memory',
     category: 'productivity',
     command: 'node',
-    relativeServerPath: 'mcp-servers/built-in/obsidian-memory/dist/index.js',
+    relativeServerPath: 'mcp-servers/built-in/memory/dist/index.js',
     requiresAuth: false,
     authType: 'none',
     env: {
-      // OBSIDIAN_VAULT_PATH can be set by user in settings
+      // MEMORY_VAULT_PATH can be set by user in settings
       // Default will be created in user data directory
     }
   },
@@ -110,11 +110,10 @@ export async function initializeBuiltInServers(
     // Build environment variables for this server
     const serverEnv = { ...definition.env }
 
-    // For obsidian-memory, set up the vault path
-    if (definition.id === 'builtin-obsidian-memory' && userDataPath) {
-      const obsidianVaultPath = userDataPath + '/obsidian-vault'
-      serverEnv.OBSIDIAN_VAULT_PATH = obsidianVaultPath
-      console.log(`[builtInServers] Setting Obsidian vault path: ${obsidianVaultPath}`)
+    // For memory server, set up the vault path
+    if (definition.id === 'builtin-memory' && userDataPath) {
+      const memoryVaultPath = userDataPath + '/memory-vault'
+      serverEnv.MEMORY_VAULT_PATH = memoryVaultPath
     }
 
     const builtInConfig: Omit<MCPServer, 'state' | 'error'> = {
