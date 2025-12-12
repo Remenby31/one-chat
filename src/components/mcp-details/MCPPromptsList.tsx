@@ -1,12 +1,10 @@
 import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
-import { Search, MessageSquare, ChevronRight, Info } from "lucide-react"
+import { Search, MessageSquare, ChevronRight } from "lucide-react"
 import type { MCPServer, MCPPrompt } from "@/types/mcp"
 import { useMCPDetails } from "@/lib/useMCPDetails"
 import { mcpManager } from "@/lib/mcpManager"
 import { cn } from "@/lib/utils"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
 
 interface MCPPromptsListProps {
   server: MCPServer
@@ -114,7 +112,7 @@ export function MCPPromptsList({ server }: MCPPromptsListProps) {
         </div>
 
         {/* List */}
-        <ScrollArea className="flex-1">
+        <div className="flex-1 overflow-y-auto scrollbar-none">
           <div className="space-y-2">
             {filteredPrompts.map((prompt) => {
               const promptType = getPromptType(prompt.name)
@@ -132,31 +130,22 @@ export function MCPPromptsList({ server }: MCPPromptsListProps) {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2">
                         <MessageSquare className="h-4 w-4 shrink-0" />
                         <span className="font-medium text-sm truncate">{prompt.name}</span>
+                        {promptType && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                            {promptType}
+                          </span>
+                        )}
                       </div>
-                      {promptType && (
-                        <Badge variant="secondary" className="text-xs mb-1">
-                          {promptType}
-                        </Badge>
-                      )}
                       {prompt.description && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                           {prompt.description}
                         </p>
                       )}
                     </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {/* Argument count badge */}
-                      {getArgCount(prompt) > 0 && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-accent text-muted-foreground">
-                          {getArgCount(prompt)} args
-                        </span>
-                      )}
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                   </div>
                 </button>
               )
@@ -168,122 +157,63 @@ export function MCPPromptsList({ server }: MCPPromptsListProps) {
               </p>
             )}
           </div>
-        </ScrollArea>
-
-        {/* Count */}
-        <div className="text-xs text-muted-foreground">
-          Showing {filteredPrompts.length} of {prompts.length} prompts
         </div>
       </div>
 
       {/* Prompt Details */}
       <div className="flex-1 border-l pl-4">
         {selectedPrompt ? (
-          <ScrollArea className="h-full">
+          <div className="h-full overflow-y-auto scrollbar-none">
             <div className="space-y-4">
               {/* Header */}
               <div>
-                <div className="flex items-start gap-3 mb-2">
-                  <MessageSquare className="h-5 w-5 shrink-0 mt-0.5 text-primary" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{selectedPrompt.name}</h3>
-                    {getPromptType(selectedPrompt.name) && (
-                      <Badge variant="secondary" className="mt-1">
-                        {getPromptType(selectedPrompt.name)}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
+                <h3 className="font-semibold text-lg">{selectedPrompt.name}</h3>
                 {selectedPrompt.description && (
-                  <p className="text-sm text-muted-foreground ml-8">
+                  <p className="text-sm text-muted-foreground mt-1">
                     {selectedPrompt.description}
                   </p>
                 )}
               </div>
 
-              {/* Conventional Prompt Info */}
-              {getPromptType(selectedPrompt.name) && (
-                <div className="ml-8 p-3 border rounded-lg bg-accent/50">
-                  <div className="flex items-start gap-2">
-                    <Info className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
-                    <div className="text-xs space-y-1">
-                      <p className="font-medium">Conventional Prompt</p>
-                      <p className="text-muted-foreground">
-                        This prompt is automatically injected into conversations based on its name.
-                        {getPromptType(selectedPrompt.name) === 'System' &&
-                          " It will be added as a system message at the start."}
-                        {getPromptType(selectedPrompt.name) === 'User Context' &&
-                          " It will be added as initial user context."}
-                        {getPromptType(selectedPrompt.name) === 'Tool Instructions' &&
-                          " It will be concatenated to the system prompt."}
-                      </p>
+              {/* Arguments */}
+              {selectedPrompt.arguments && selectedPrompt.arguments.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold">Arguments</h4>
+                  <div className="bg-accent/50 rounded-lg p-3 text-sm">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 items-start">
+                      {selectedPrompt.arguments.map((arg, idx) => (
+                        <>
+                          <span key={`${idx}-name`} className="text-xs font-medium">
+                            {arg.name}
+                            {arg.required && <span className="text-red-400 ml-0.5">*</span>}
+                          </span>
+                          <span key={`${idx}-desc`} className="text-xs text-muted-foreground">
+                            {arg.description || 'No description'}
+                          </span>
+                        </>
+                      ))}
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Arguments */}
-              {selectedPrompt.arguments && selectedPrompt.arguments.length > 0 && (
-                <div className="ml-8">
-                  <h4 className="font-medium text-sm mb-2">Arguments</h4>
-                  <div className="space-y-2">
-                    {selectedPrompt.arguments.map((arg, idx) => (
-                      <div key={idx} className="border rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <code className="text-sm font-mono font-semibold">{arg.name}</code>
-                          {arg.required && (
-                            <Badge variant="destructive" className="text-xs">
-                              Required
-                            </Badge>
-                          )}
-                        </div>
-                        {arg.description && (
-                          <p className="text-xs text-muted-foreground">
-                            {arg.description}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* No Arguments */}
-              {(!selectedPrompt.arguments || selectedPrompt.arguments.length === 0) && (
-                <div className="ml-8 p-3 border rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    This prompt does not accept any arguments
-                  </p>
-                </div>
-              )}
-
-              {/* Prompt Content */}
-              <div className="ml-8">
-                <h4 className="font-medium text-sm mb-2">Content Preview</h4>
-                <div className="border rounded-lg p-3 bg-muted/30">
+              {/* Content */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">Content</h4>
+                <div className="bg-accent/50 rounded-lg p-3">
                   {isLoadingContent ? (
-                    <p className="text-sm text-muted-foreground">Loading content...</p>
+                    <p className="text-xs text-muted-foreground">Loading...</p>
                   ) : promptContent ? (
-                    <pre className="text-xs whitespace-pre-wrap break-words font-mono max-h-96 overflow-y-auto">
+                    <pre className="text-xs whitespace-pre-wrap break-words font-mono">
                       {promptContent}
                     </pre>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No content available</p>
+                    <p className="text-xs text-muted-foreground">No content</p>
                   )}
                 </div>
               </div>
-
-              {/* Usage Info */}
-              <div className="ml-8 p-3 border rounded-lg bg-muted/50">
-                <h4 className="font-medium text-sm mb-2">Usage</h4>
-                <p className="text-xs text-muted-foreground">
-                  Prompts can be invoked manually or automatically injected into conversations
-                  based on naming conventions (system_prompt, user_prompt, etc.).
-                </p>
-              </div>
             </div>
-          </ScrollArea>
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-muted-foreground">Select a prompt to view details</p>

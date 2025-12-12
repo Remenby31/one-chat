@@ -85,13 +85,13 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
     !hasToolCalls
 
   // Reduce padding for messages with only tool calls (no text content)
-  const paddingClass = hasToolCalls && !hasContent ? 'py-0.5' : 'py-3'
+  const paddingClass = hasToolCalls && !hasContent ? 'py-0' : 'py-3'
 
   return (
     <LazyMotion features={domAnimation}>
       <m.div
         {...messageAnimation}
-        className={`relative mx-auto w-full max-w-[var(--thread-max-width)] ${paddingClass} last:mb-24`}
+        className={`relative mx-auto w-full max-w-[var(--thread-max-width)] ${paddingClass}`}
         data-role="assistant"
       >
         {/* 1. Message content FIRST (chronological order) */}
@@ -130,7 +130,7 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2 }}
-              className={hasContent ? 'mx-2 mt-1.5' : 'mx-2'}
+              className={cn('mx-2 space-y-1 pb-1', hasContent && 'mt-1.5')}
             >
               {displayToolCalls.map((toolCall) => (
                 <ToolCallDisplay

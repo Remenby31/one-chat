@@ -59,7 +59,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) =>
   return (
     <div
       ref={viewportRef}
-      className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4 pt-20 bg-transparent"
+      className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4 pt-20 pb-16 bg-transparent"
     >
       {/* Messages */}
       {messages.map((message, index) => {
@@ -85,8 +85,6 @@ export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) =>
         ) : null
       })}
 
-      {/* Spacer when thread has messages */}
-      {messages.length > 0 && <div className="min-h-8 grow" />}
 
       {/* Scroll to bottom button */}
       {showScrollButton && (

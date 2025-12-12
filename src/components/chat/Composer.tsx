@@ -149,8 +149,8 @@ export const Composer: FC<ComposerProps> = ({
   }
 
   return (
-    <div className="sticky bottom-0 mx-auto flex w-full flex-col gap-4 pb-4 md:pb-6">
-      <div className="max-w-3xl mx-auto w-full px-4">
+    <div className="absolute bottom-0 left-0 right-0 mx-auto flex w-full flex-col gap-4 pb-4 md:pb-6 pointer-events-none">
+      <div className="max-w-3xl mx-auto w-full px-4 pointer-events-auto">
         {composerContent}
       </div>
     </div>

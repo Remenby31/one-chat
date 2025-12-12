@@ -1,8 +1,10 @@
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Trash2, Activity, Plug2, Circle, LoaderCircle, ShieldAlert, CheckCircle, XCircle } from "lucide-react"
 import type { MCPServer, MCPServerState } from "@/types/mcp"
 import { cn } from "@/lib/utils"
+import { getMCPServerFaviconUrl } from "@/lib/mcpFavicon"
 
 interface MCPServerCardProps {
   server: MCPServer
@@ -70,7 +72,12 @@ export function MCPServerCard({
     }
   }
 
+  // Get favicon URL from server config
+  const faviconUrl = getMCPServerFaviconUrl(server.command, server.args, server.httpUrl, 32)
+  const [faviconError, setFaviconError] = useState(false)
+
   const getIcon = (icon?: string) => {
+    // First priority: local icon if provided
     if (icon) {
       return (
         <img
@@ -84,6 +91,19 @@ export function MCPServerCard({
         />
       )
     }
+
+    // Second priority: favicon from URL
+    if (faviconUrl && !faviconError) {
+      return (
+        <img
+          src={faviconUrl}
+          alt={server.name}
+          className="h-5 w-5 rounded-sm"
+          onError={() => setFaviconError(true)}
+        />
+      )
+    }
+
     return null
   }
 
@@ -108,7 +128,7 @@ export function MCPServerCard({
         >
           <div className="relative mt-1">
             {getIcon(server.icon)}
-            <Plug2 className={cn("h-5 w-5", server.icon ? "hidden" : "")} />
+            <Plug2 className={cn("h-5 w-5", (server.icon || (faviconUrl && !faviconError)) ? "hidden" : "")} />
           </div>
 
           <div className="flex-1 min-w-0">
@@ -137,16 +157,6 @@ export function MCPServerCard({
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {/* Status Badge */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className={cn("fill-current", getStatusColor())}>
-              {getStatusIcon()}
-            </span>
-            <span className={cn("font-medium", getStatusColor())}>
-              {stateConfig.label}
-            </span>
-          </div>
-
           <Switch
             checked={server.state === 'connected' || server.state === 'connecting'}
             onCheckedChange={(checked) => onToggle(server.id, checked)}

@@ -5,7 +5,6 @@ import type { MCPServer, MCPTool } from "@/types/mcp"
 import { useMCPDetails } from "@/lib/useMCPDetails"
 import { MCPToolPlayground } from "./MCPToolPlayground"
 import { cn } from "@/lib/utils"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface MCPToolsListProps {
   server: MCPServer
@@ -73,7 +72,7 @@ export function MCPToolsList({ server }: MCPToolsListProps) {
         </div>
 
         {/* List */}
-        <ScrollArea className="flex-1">
+        <div className="flex-1 overflow-y-auto scrollbar-none">
           <div className="space-y-2">
             {filteredTools.map((tool) => (
               <button
@@ -117,7 +116,7 @@ export function MCPToolsList({ server }: MCPToolsListProps) {
               </p>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
 
       {/* Tool Details & Playground */}

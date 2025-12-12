@@ -1,6 +1,6 @@
 import type { FC } from 'react'
 import { useMemo } from 'react'
-import { Loader2, XCircle } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { m } from 'motion/react'
@@ -14,22 +14,16 @@ interface ToolCallResultProps {
   className?: string
 }
 
-/**
- * Component to display the result of a tool call execution
- * Handles three states: running, success, and error
- */
 export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className }) => {
   const status = useToolCallStatus(toolCall)
   const isDark = useDarkMode()
 
   const syntaxTheme = isDark ? oneDark : oneLight
 
-  // Format result for display
   const formattedResult = useMemo(() => {
     return toolCall.result !== undefined ? formatForDisplay(toolCall.result) : ''
   }, [toolCall.result])
 
-  // Detect content type (JSON or text)
   const isJson = useMemo(() => {
     if (!formattedResult) return false
     try {
@@ -40,17 +34,16 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
     }
   }, [formattedResult])
 
-  // Common SyntaxHighlighter styles
   const syntaxStyle = {
     margin: 0,
-    padding: '10px',
-    fontSize: '10px',
-    lineHeight: '1.5',
+    padding: '8px 10px',
+    fontSize: '11px',
+    lineHeight: '1.4',
     background: 'transparent',
   }
 
   // Running state
-  if (status.status === 'running') {
+  if (status.status === 'running' || status.status === 'streaming' || status.status === 'ready') {
     return (
       <m.div
         initial={{ opacity: 0 }}
@@ -58,9 +51,9 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
         transition={{ duration: 0.15 }}
         className={className}
       >
-        <div className="flex items-center gap-2 text-xs text-muted-foreground/70 p-2.5 rounded-md bg-white/3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground/60 py-1">
           <Loader2 className="size-3 animate-spin" />
-          <span>Executing...</span>
+          <span>Running...</span>
         </div>
       </m.div>
     )
@@ -75,16 +68,9 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
         transition={{ duration: 0.15 }}
         className={className}
       >
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground/70 p-2.5 rounded-md bg-white/3 border border-white/5">
-            <XCircle className="size-3" />
-            <span>Execution failed</span>
-            {status.errorMessage && (
-              <span className="text-muted-foreground/50">· {status.errorMessage}</span>
-            )}
-          </div>
-          <div className="rounded-md overflow-hidden border border-white/5 [&_*]:!bg-transparent">
-            {isJson ? (
+        <div className="rounded-md overflow-hidden bg-red-500/5">
+          {formattedResult ? (
+            isJson ? (
               <SyntaxHighlighter
                 language="json"
                 style={syntaxTheme}
@@ -94,17 +80,35 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
                 {formattedResult}
               </SyntaxHighlighter>
             ) : (
-              <pre className="p-2.5 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
+              <pre className="p-2 text-[11px] text-red-400/80 whitespace-pre-wrap break-words font-mono">
                 {formattedResult}
               </pre>
-            )}
-          </div>
+            )
+          ) : (
+            <p className="p-2 text-[11px] text-red-400/80">
+              {status.errorMessage || 'Execution failed'}
+            </p>
+          )}
         </div>
       </m.div>
     )
   }
 
-  // Success state
+  // Success state - no result
+  if (!formattedResult) {
+    return (
+      <m.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.15 }}
+        className={className}
+      >
+        <p className="text-[11px] text-muted-foreground/40 py-1">No output</p>
+      </m.div>
+    )
+  }
+
+  // Success state with result
   return (
     <m.div
       initial={{ opacity: 0 }}
@@ -112,7 +116,7 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
       transition={{ duration: 0.15 }}
       className={className}
     >
-      <div className="rounded-md overflow-hidden border border-white/5 [&_*]:!bg-transparent">
+      <div className="rounded-md overflow-hidden bg-muted/30">
         {isJson ? (
           <SyntaxHighlighter
             language="json"
@@ -123,7 +127,7 @@ export const ToolCallResult: FC<ToolCallResultProps> = ({ toolCall, className })
             {formattedResult}
           </SyntaxHighlighter>
         ) : (
-          <pre className="p-2.5 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
+          <pre className="p-2 text-[11px] text-foreground/80 whitespace-pre-wrap break-words font-mono">
             {formattedResult}
           </pre>
         )}

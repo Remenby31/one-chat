@@ -67,17 +67,6 @@ export function MCPOverview({ server }: MCPOverviewProps) {
 
   return (
     <div className="space-y-6">
-      {/* Status Card */}
-      {isRunning && (
-        <div className="bg-gradient-to-br from-green-500/10 to-green-600/5 border border-green-500/20 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-green-400 mb-2">
-            <Activity className="h-4 w-4" />
-            <span className="text-sm font-medium">Status</span>
-          </div>
-          <p className="text-lg font-semibold text-green-400">Connected</p>
-        </div>
-      )}
-
       {/* Capabilities Summary */}
       {isRunning && (
         <div className="space-y-3">
@@ -178,20 +167,18 @@ export function MCPOverview({ server }: MCPOverviewProps) {
         </Button>
       </div>
 
-      {/* General Information */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold">General Information</h3>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-muted-foreground">Command:</span>
-            <p className="font-mono text-xs mt-1 bg-accent p-2 rounded">
+      {/* Configuration */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold">Configuration</h3>
+        <div className="bg-accent/50 rounded-lg p-3 text-sm">
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 items-start">
+            <span className="text-muted-foreground">Command</span>
+            <code className="font-mono text-xs bg-background/50 px-2 py-1 rounded break-all">
               {server.command} {(server.args || []).join(' ')}
-            </p>
-          </div>
+            </code>
 
-          <div>
-            <span className="text-muted-foreground">Authentication:</span>
-            <p className="mt-1">
+            <span className="text-muted-foreground">Auth</span>
+            <code className="font-mono text-xs bg-background/50 px-2 py-1 rounded">
               {server.requiresAuth ? (
                 <span className="flex items-center gap-1">
                   <ShieldAlert className="h-3 w-3" />
@@ -200,21 +187,19 @@ export function MCPOverview({ server }: MCPOverviewProps) {
               ) : (
                 'None'
               )}
-            </p>
-          </div>
+            </code>
 
-          {server.env && Object.keys(server.env).length > 0 && (
-            <div className="col-span-2">
-              <span className="text-muted-foreground">Environment Variables:</span>
-              <div className="mt-1 space-y-1">
-                {Object.entries(server.env).map(([key, value]) => (
-                  <p key={key} className="font-mono text-xs bg-accent p-2 rounded">
-                    {key}={value.startsWith('$') ? value : '***'}
-                  </p>
-                ))}
-              </div>
-            </div>
-          )}
+            {server.env && Object.keys(server.env).length > 0 && (
+              Object.entries(server.env).map(([key, value]) => (
+                <>
+                  <span key={`${key}-label`} className="text-muted-foreground">{key}</span>
+                  <code key={`${key}-value`} className="font-mono text-xs bg-background/50 px-2 py-1 rounded break-all">
+                    {value}
+                  </code>
+                </>
+              ))
+            )}
+          </div>
         </div>
       </div>
 

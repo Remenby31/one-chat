@@ -18,7 +18,6 @@ import type { MCPServer } from '@/types/mcp'
 export interface BuiltInServerDefinition {
   id: string
   name: string
-  description: string
   icon?: string
   category: 'productivity' | 'database' | 'api' | 'filesystem' | 'other'
   command: string
@@ -38,7 +37,6 @@ export const BUILT_IN_SERVERS: BuiltInServerDefinition[] = [
   {
     id: 'builtin-memory',
     name: 'Memory',
-    description: 'Persistent memory system using markdown files. Store and retrieve conversation context, notes, and knowledge across sessions.',
     icon: 'memory',
     category: 'productivity',
     command: 'node',
@@ -119,7 +117,6 @@ export async function initializeBuiltInServers(
     const builtInConfig: Omit<MCPServer, 'state' | 'error'> = {
       id: definition.id,
       name: definition.name,
-      description: definition.description,
       icon: definition.icon,
       category: definition.category,
       command: definition.command,

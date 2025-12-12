@@ -7,11 +7,11 @@ import { MCPToolsList } from "./MCPToolsList"
 import { MCPResourcesList } from "./MCPResourcesList"
 import { MCPPromptsList } from "./MCPPromptsList"
 import { MCPInjectedPrompts } from "./MCPInjectedPrompts"
-import { MCPConfigEditor } from "./MCPConfigEditor"
 import { useMCPDetails } from "@/lib/useMCPDetails"
 import { mcpManager } from "@/lib/mcpManager"
 import { cn } from "@/lib/utils"
 import { useEffect, useState } from "react"
+import { detectPromptType } from "@/lib/mcpPromptInjection"
 
 interface MCPServerDetailsDialogProps {
   server: MCPServer | null
@@ -71,6 +71,7 @@ export function MCPServerDetailsDialog({
   const toolsCount = isLoading ? '...' : tools.length
   const resourcesCount = isLoading ? '...' : resources.length
   const promptsCount = isLoading ? '...' : prompts.length
+  const injectionCount = isLoading ? '...' : prompts.filter(p => detectPromptType(p.name)).length
 
   const getStatusColor = () => {
     switch (displayState) {
@@ -164,7 +165,7 @@ export function MCPServerDetailsDialog({
 
         {/* Tabs Content */}
         <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex justify-center px-6 mt-4">
+          <div className="flex justify-center px-6">
             <TabsList className="max-w-2xl">
               <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="tools" className="gap-2">
@@ -191,9 +192,14 @@ export function MCPServerDetailsDialog({
                 </span>
               )}
             </TabsTrigger>
-              <TabsTrigger value="injection">Injection</TabsTrigger>
-              <TabsTrigger value="logs">Logs</TabsTrigger>
-              <TabsTrigger value="config">Config</TabsTrigger>
+              <TabsTrigger value="injection" className="gap-2">
+                Injection
+                {displayState === 'connected' && (
+                  <span className="px-1.5 py-0.5 text-xs rounded bg-primary/20 text-primary">
+                    {injectionCount}
+                  </span>
+                )}
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -216,16 +222,6 @@ export function MCPServerDetailsDialog({
 
             <TabsContent value="injection" className="h-full mt-4 overflow-y-auto">
               <MCPInjectedPrompts server={server} />
-            </TabsContent>
-
-            <TabsContent value="logs" className="h-full mt-4 overflow-y-auto">
-              <div className="text-sm text-muted-foreground">
-                Server logs are available in the terminal where the MCP server is running.
-              </div>
-            </TabsContent>
-
-            <TabsContent value="config" className="h-full mt-4 overflow-y-auto">
-              <MCPConfigEditor server={server} onUpdate={onServerUpdate} />
             </TabsContent>
           </div>
         </Tabs>

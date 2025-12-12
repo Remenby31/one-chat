@@ -1,11 +1,8 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Play, RotateCcw, Copy, Check } from "lucide-react"
 import type { MCPServer, MCPTool } from "@/types/mcp"
 import { useToolTester } from "@/lib/useMCPDetails"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -18,9 +15,31 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
   const { args, updateArg, result, error, isRunning, runTool, reset } = useToolTester(server, tool)
   const [copied, setCopied] = useState(false)
 
+  // Extract actual content from MCP result format
+  const getDisplayResult = () => {
+    if (!result) return ''
+
+    // MCP returns { content: [{ type: "text", text: "..." }] }
+    if (result.content && Array.isArray(result.content)) {
+      const texts = result.content
+        .filter((c: any) => c.type === 'text' && c.text)
+        .map((c: any) => {
+          // Try to parse nested JSON
+          try {
+            const parsed = JSON.parse(c.text)
+            return JSON.stringify(parsed, null, 2)
+          } catch {
+            return c.text
+          }
+        })
+      return texts.join('\n')
+    }
+
+    return JSON.stringify(result, null, 2)
+  }
+
   const handleCopy = () => {
-    const text = result ? JSON.stringify(result, null, 2) : ''
-    navigator.clipboard.writeText(text)
+    navigator.clipboard.writeText(getDisplayResult())
     setCopied(true)
     toast.success('Copied to clipboard')
     setTimeout(() => setCopied(false), 2000)
@@ -28,36 +47,43 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
 
   const renderInput = (key: string, prop: any, isRequired: boolean) => {
     const type = prop.type
+    const labelWithDescription = (
+      <div className="space-y-0.5">
+        <span className="text-xs font-medium">
+          {key}
+          {isRequired && <span className="text-red-400 ml-0.5">*</span>}
+          <span className="text-muted-foreground font-normal ml-2">{type}</span>
+        </span>
+        {prop.description && (
+          <p className="text-xs text-muted-foreground">{prop.description}</p>
+        )}
+      </div>
+    )
 
     if (type === 'boolean') {
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-3 py-1">
           <input
             type="checkbox"
             checked={args[key] || false}
             onChange={(e) => updateArg(key, e.target.checked)}
-            className="h-4 w-4 rounded border-input"
+            className="h-4 w-4 rounded border-input mt-0.5"
           />
-          <Label htmlFor={key} className="text-sm">
-            {prop.description || key}
-          </Label>
+          {labelWithDescription}
         </div>
       )
     }
 
     if (type === 'number' || type === 'integer') {
       return (
-        <div className="space-y-1">
-          <Label htmlFor={key} className="text-xs text-muted-foreground">
-            {key}
-            {isRequired && <span className="text-red-400 ml-1">*</span>}
-          </Label>
+        <div className="space-y-1.5">
+          {labelWithDescription}
           <Input
             id={key}
             type="number"
             value={args[key] ?? ''}
             onChange={(e) => updateArg(key, type === 'integer' ? parseInt(e.target.value) : parseFloat(e.target.value))}
-            placeholder={prop.description}
+            className="h-8"
           />
         </div>
       )
@@ -65,14 +91,11 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
 
     if (type === 'array' || type === 'object') {
       return (
-        <div className="space-y-1">
-          <Label htmlFor={key} className="text-xs text-muted-foreground">
-            {key}
-            {isRequired && <span className="text-red-400 ml-1">*</span>}
-          </Label>
-          <Textarea
+        <div className="space-y-1.5">
+          {labelWithDescription}
+          <Input
             id={key}
-            value={typeof args[key] === 'string' ? args[key] : JSON.stringify(args[key], null, 2)}
+            value={typeof args[key] === 'string' ? args[key] : JSON.stringify(args[key])}
             onChange={(e) => {
               try {
                 updateArg(key, JSON.parse(e.target.value))
@@ -80,34 +103,24 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
                 updateArg(key, e.target.value)
               }
             }}
-            placeholder={`JSON ${type}`}
-            className="font-mono text-xs"
-            rows={3}
+            placeholder="[]"
+            className="h-8 font-mono text-xs"
           />
-          {prop.description && (
-            <p className="text-xs text-muted-foreground">{prop.description}</p>
-          )}
         </div>
       )
     }
 
     // Default: string
     return (
-      <div className="space-y-1">
-        <Label htmlFor={key} className="text-xs text-muted-foreground">
-          {key}
-          {isRequired && <span className="text-red-400 ml-1">*</span>}
-        </Label>
+      <div className="space-y-1.5">
+        {labelWithDescription}
         <Input
           id={key}
           type="text"
           value={args[key] ?? ''}
           onChange={(e) => updateArg(key, e.target.value)}
-          placeholder={prop.description}
+          className="h-8"
         />
-        {prop.description && (
-          <p className="text-xs text-muted-foreground">{prop.description}</p>
-        )}
       </div>
     )
   }
@@ -116,8 +129,8 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
   const requiredFields = tool.inputSchema.required || []
 
   return (
-    <ScrollArea className="h-full">
-      <div className="space-y-4 pr-2">
+    <div className="h-full overflow-y-auto scrollbar-none">
+      <div className="space-y-4">
         {/* Tool Header */}
         <div>
           <h3 className="text-lg font-semibold">{tool.name}</h3>
@@ -145,20 +158,19 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
           <Button
             onClick={runTool}
             disabled={isRunning}
-            size="sm"
+            className="flex-1 h-8"
           >
-            <Play className="h-4 w-4 mr-2" />
-            {isRunning ? 'Running...' : 'Run Tool'}
+            <Play className="h-3 w-3 mr-2" />
+            {isRunning ? 'Running...' : 'Run'}
           </Button>
 
           {(result || error) && (
             <Button
               onClick={reset}
               variant="outline"
-              size="sm"
+              className="h-8"
             >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Clear
+              <RotateCcw className="h-3 w-3" />
             </Button>
           )}
         </div>
@@ -180,9 +192,9 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
                 )}
               </Button>
             </div>
-            <div className="bg-accent rounded-lg p-4 overflow-x-auto">
+            <div className="bg-accent rounded-lg p-3 overflow-x-auto">
               <pre className="text-xs font-mono whitespace-pre-wrap">
-                {JSON.stringify(result, null, 2)}
+                {getDisplayResult()}
               </pre>
             </div>
           </div>
@@ -195,17 +207,7 @@ export function MCPToolPlayground({ server, tool }: MCPToolPlaygroundProps) {
             <p className="text-sm text-red-400">{error}</p>
           </div>
         )}
-
-        {/* Schema Display */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold">Input Schema</h4>
-          <div className="bg-accent rounded-lg p-4 overflow-x-auto">
-            <pre className="text-xs font-mono whitespace-pre-wrap">
-              {JSON.stringify(tool.inputSchema, null, 2)}
-            </pre>
-          </div>
-        </div>
       </div>
-    </ScrollArea>
+    </div>
   )
 }

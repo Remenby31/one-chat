@@ -89,24 +89,23 @@ export const ChatThread: FC<ChatThreadProps> = ({
           <div className="relative flex flex-1 flex-col min-h-0 bg-transparent">
             {/* Messages when not empty */}
             {!isEmpty && (
-              <MessageList
-                messages={messages}
-                onRegenerate={() => {
-                  // TODO: Implement regenerate
-                }}
-              />
-            )}
-
-            {/* Composer at bottom when thread has messages */}
-            {!isEmpty && (
-              <Composer
-                onSend={sendMessage}
-                onStop={stopGeneration}
-                isGenerating={isGenerating}
-                mcpServers={mcpServers}
-                onMcpToggle={onMcpToggle}
-                onSettingsClick={onSettingsClick}
-              />
+              <>
+                <MessageList
+                  messages={messages}
+                  onRegenerate={() => {
+                    // TODO: Implement regenerate
+                  }}
+                />
+                {/* Composer positioned absolutely to allow messages to scroll behind it */}
+                <Composer
+                  onSend={sendMessage}
+                  onStop={stopGeneration}
+                  isGenerating={isGenerating}
+                  mcpServers={mcpServers}
+                  onMcpToggle={onMcpToggle}
+                  onSettingsClick={onSettingsClick}
+                />
+              </>
             )}
 
             {/* Centered composer when thread is empty */}
