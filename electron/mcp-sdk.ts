@@ -224,7 +224,11 @@ export class MCPSDKManager {
 
       const result = await instance.client.listTools();
       return { success: true, tools: result.tools };
-    } catch (error) {
+    } catch (error: any) {
+      // Error code -32601 means "Method not found" - server doesn't support tools
+      if (error?.code === -32601) {
+        return { success: true, tools: [] };
+      }
       console.error(`[MCP-SDK] Failed to list tools for ${serverId}:`, error);
       return {
         success: false,
@@ -274,7 +278,11 @@ export class MCPSDKManager {
 
       const result = await instance.client.listPrompts();
       return { success: true, prompts: result.prompts };
-    } catch (error) {
+    } catch (error: any) {
+      // Error code -32601 means "Method not found" - server doesn't support prompts
+      if (error?.code === -32601) {
+        return { success: true, prompts: [] };
+      }
       console.error(`[MCP-SDK] Failed to list prompts for ${serverId}:`, error);
       return {
         success: false,
@@ -324,7 +332,11 @@ export class MCPSDKManager {
 
       const result = await instance.client.listResources();
       return { success: true, resources: result.resources };
-    } catch (error) {
+    } catch (error: any) {
+      // Error code -32601 means "Method not found" - server doesn't support resources
+      if (error?.code === -32601) {
+        return { success: true, resources: [] };
+      }
       console.error(`[MCP-SDK] Failed to list resources for ${serverId}:`, error);
       return {
         success: false,

@@ -518,14 +518,23 @@ class MemoryServer {
             );
           }
 
-          // Return only the content - no metadata pollution
+          // Return content with metadata so the AI knows the root note's ID
+          const rootNoteInfo = `[Root Note Metadata]
+ID: ${rootNote.id}
+Title: ${rootNote.title}
+Path: ${rootNote.path}
+Links: ${rootNote.links.length > 0 ? rootNote.links.join(', ') : 'none'}
+
+[Content]
+${rootNote.content}`;
+
           return {
             messages: [
               {
                 role: 'user',
                 content: {
                   type: 'text',
-                  text: rootNote.content
+                  text: rootNoteInfo
                 }
               }
             ]
