@@ -1,6 +1,7 @@
 import type { FC } from 'react'
 import { useState, useMemo } from 'react'
 import { CopyIcon, CheckIcon, RefreshCwIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { m, LazyMotion, domAnimation, AnimatePresence } from 'motion/react'
 import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { ToolCallDisplay } from '@/components/chat/ToolCall'

@@ -16,6 +16,41 @@ import { useChatStore } from '@/lib/chatStore'
 import { DEFAULT_SYSTEM_PROMPT } from '@/lib/defaultSystemPrompt'
 import { initializeBuiltInServers } from '@/lib/builtInServers'
 
+/**
+ * Start MCP servers and sync their states from the SDK
+ */
+async function startAndSyncMcpServers(
+  servers: MCPServer[],
+  setMcpServers: React.Dispatch<React.SetStateAction<MCPServer[]>>
+): Promise<void> {
+  // Ensure all servers have initial state
+  const serversWithState = servers.map(s => ({
+    ...s,
+    state: s.state || 'idle' as const
+  }))
+
+  // Start servers in parallel with setting React state
+  const startPromise = mcpManager.startEnabledServers(serversWithState)
+  setMcpServers(serversWithState)
+
+  // Wait for all servers to finish connecting
+  await startPromise
+
+  // Fetch actual states from SDK and update
+  if (window.electronAPI?.mcpGetAllServerStates) {
+    const result = await window.electronAPI.mcpGetAllServerStates()
+    if (result.success && result.states) {
+      const updatedServers = serversWithState.map(server => {
+        const actualState = result.states[server.id]
+        if (actualState) {
+          return { ...server, state: actualState.state as MCPServer['state'], error: actualState.error }
+        }
+        return server
+      })
+      setMcpServers(updatedServers)
+    }
+  }
+}
 
 function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -64,35 +99,11 @@ function App() {
           }
         }
 
-        if (savedMcpServers) {
-          // Initialize built-in servers (adds new built-in servers, updates existing ones)
-          const servers = await initializeBuiltInServers(savedMcpServers, userDataPath)
+        // Initialize built-in servers (adds new ones, updates existing ones)
+        const servers = await initializeBuiltInServers(savedMcpServers || [], userDataPath)
 
-          // Ensure all servers have initial state
-          const serversWithState = servers.map(s => ({
-            ...s,
-            state: s.state || 'idle'
-          }))
-
-          setMcpServers(serversWithState)
-
-          // Start enabled servers (state will be updated via IPC events)
-          await mcpManager.startEnabledServers(serversWithState)
-        } else {
-          // No saved servers - initialize with built-in servers only
-          const builtInServers = await initializeBuiltInServers([], userDataPath)
-
-          // Ensure all servers have initial state
-          const serversWithState = builtInServers.map(s => ({
-            ...s,
-            state: s.state || 'idle'
-          }))
-
-          setMcpServers(serversWithState)
-
-          // Start enabled built-in servers (state will be updated via IPC events)
-          await mcpManager.startEnabledServers(serversWithState)
-        }
+        // Start servers and sync states from SDK
+        await startAndSyncMcpServers(servers, setMcpServers)
       } else {
         // Fallback to localStorage for development
         const savedModels = localStorage.getItem("models")
@@ -162,6 +173,7 @@ function App() {
     if (window.electronAPI?.onMcpStateChanged) {
       stateChangeUnsubscribe = window.electronAPI.onMcpStateChanged((data) => {
         const { serverId, state, error } = data
+        console.log(`[App] MCP state changed: ${serverId} -> ${state}`)
 
         setMcpServers(prevServers =>
           prevServers.map(server =>
@@ -380,6 +392,8 @@ function App() {
           onModelChange={handleModelChange}
           onModelsUpdate={handleModelsUpdate}
           defaultTab={settingsTab}
+          mcpServers={mcpServers}
+          onMcpServersChange={setMcpServers}
         />
       </div>
       <Toaster position="top-right" />

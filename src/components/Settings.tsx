@@ -50,15 +50,29 @@ interface SettingsProps {
   onModelChange: (model: ModelConfig | null) => void
   onModelsUpdate?: () => void
   defaultTab?: string
+  mcpServers?: MCPServer[]
+  onMcpServersChange?: (servers: MCPServer[]) => void
 }
 
-export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, defaultTab = 'models' }: SettingsProps) {
+export function Settings({
+  open,
+  onOpenChange,
+  onModelChange,
+  onModelsUpdate,
+  defaultTab = 'models',
+  mcpServers: propMcpServers,
+  onMcpServersChange
+}: SettingsProps) {
   const { theme, setTheme } = useTheme()
   const [activeTab, setActiveTab] = useState(defaultTab)
   const [models, setModels] = useState<ModelConfig[]>([])
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
-  const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
+  // Use prop if provided, otherwise use local state
+  const [localMcpServers, setLocalMcpServers] = useState<MCPServer[]>([])
+  const mcpServers = propMcpServers ?? localMcpServers
+  const setMcpServers = onMcpServersChange ?? setLocalMcpServers
+
   const [newModel, setNewModel] = useState<Partial<ModelConfig>>({
     name: "",
     apiKeyId: "",
@@ -108,22 +122,25 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
           }
         }
 
-        if (savedMcpServers) {
-          // Initialize built-in servers first (ensures they exist)
-          let servers = await initializeBuiltInServers(savedMcpServers)
+        // Only load MCP servers if not provided via props
+        if (!propMcpServers) {
+          if (savedMcpServers) {
+            // Initialize built-in servers first (ensures they exist)
+            let servers = await initializeBuiltInServers(savedMcpServers)
 
-          // Then initialize server states based on authentication state
-          const serversWithStatus = servers.map((server: MCPServer) => ({
-            ...server,
-            state: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
-              ? 'auth_required' as const
-              : (server.state || 'idle' as const)
-          }))
-          setMcpServers(serversWithStatus)
-        } else {
-          // No saved servers - initialize with built-in servers only
-          const builtInServers = await initializeBuiltInServers([])
-          setMcpServers(builtInServers)
+            // Then initialize server states based on authentication state
+            const serversWithStatus = servers.map((server: MCPServer) => ({
+              ...server,
+              state: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
+                ? 'auth_required' as const
+                : (server.state || 'idle' as const)
+            }))
+            setLocalMcpServers(serversWithStatus)
+          } else {
+            // No saved servers - initialize with built-in servers only
+            const builtInServers = await initializeBuiltInServers([])
+            setLocalMcpServers(builtInServers)
+          }
         }
       } else {
         // Fallback to localStorage for development
@@ -144,24 +161,27 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
           }
         }
 
-        if (savedMcpServers) {
-          const parsed = JSON.parse(savedMcpServers)
+        // Only load MCP servers if not provided via props
+        if (!propMcpServers) {
+          if (savedMcpServers) {
+            const parsed = JSON.parse(savedMcpServers)
 
-          // Initialize built-in servers first (ensures they exist)
-          let servers = await initializeBuiltInServers(parsed)
+            // Initialize built-in servers first (ensures they exist)
+            let servers = await initializeBuiltInServers(parsed)
 
-          // Then initialize server states based on authentication state
-          const serversWithStatus = servers.map((server: MCPServer) => ({
-            ...server,
-            state: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
-              ? 'auth_required' as const
-              : (server.state || 'idle' as const)
-          }))
-          setMcpServers(serversWithStatus)
-        } else {
-          // No saved servers - initialize with built-in servers only
-          const builtInServers = await initializeBuiltInServers([])
-          setMcpServers(builtInServers)
+            // Then initialize server states based on authentication state
+            const serversWithStatus = servers.map((server: MCPServer) => ({
+              ...server,
+              state: server.requiresAuth && server.authType === 'oauth' && !server.oauthConfig?.accessToken
+                ? 'auth_required' as const
+                : (server.state || 'idle' as const)
+            }))
+            setLocalMcpServers(serversWithStatus)
+          } else {
+            // No saved servers - initialize with built-in servers only
+            const builtInServers = await initializeBuiltInServers([])
+            setLocalMcpServers(builtInServers)
+          }
         }
       }
     }
@@ -170,14 +190,16 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
   }, [])
 
   // Sync MCP servers config with file watcher (preserving runtime state)
+  // Skip when props are provided - parent handles this
   useEffect(() => {
+    if (propMcpServers) return // Parent handles file watching
     if (!window.electronAPI?.onConfigChanged) return
 
     const handleConfigChanged = (filename: string, data: MCPServer[]) => {
       if (filename === 'mcpServers.json') {
         // Preserve runtime state (state, error) from current React state
         // File only contains config properties, not runtime state
-        setMcpServers(prevServers => {
+        setLocalMcpServers(prevServers => {
           return data.map((newServer: MCPServer) => {
             const existing = prevServers.find(s => s.id === newServer.id)
             if (existing) {
@@ -198,17 +220,18 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     window.electronAPI.onConfigChanged(handleConfigChanged)
 
     // Listener stays active for the lifetime of the component
-  }, [])
+  }, [propMcpServers])
 
   // Listen for MCP server state changes from main process
-  // This ensures Settings.tsx stays in sync with SDK state
+  // Skip when props are provided - parent handles this
   useEffect(() => {
+    if (propMcpServers) return // Parent handles state changes
     if (!window.electronAPI?.onMcpStateChanged) return
 
     const unsubscribe = window.electronAPI.onMcpStateChanged((data) => {
       const { serverId, state, error } = data
 
-      setMcpServers(prevServers =>
+      setLocalMcpServers(prevServers =>
         prevServers.map(server =>
           server.id === serverId
             ? { ...server, state: state as MCPServer['state'], error }
@@ -220,7 +243,7 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     return () => {
       unsubscribe?.()
     }
-  }, [])
+  }, [propMcpServers])
 
   // Load environment variables when dialog opens
   useEffect(() => {
@@ -525,8 +548,13 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
   }
 
   const handleToggleMcpServer = async (id: string, enabled: boolean) => {
+    console.log(`[Settings] Toggle: ${id}, enabled=${enabled}`)
     const server = mcpServers.find(s => s.id === id)
-    if (!server) return
+    if (!server) {
+      console.log(`[Settings] Server not found!`)
+      return
+    }
+    console.log(`[Settings] Server: ${server.name}, state=${server.state}`)
 
     const updatedServers = mcpServers.map(s =>
       s.id === id ? { ...s, enabled } : s
@@ -536,9 +564,13 @@ export function Settings({ open, onOpenChange, onModelChange, onModelsUpdate, de
     // Start or stop the server via mcpManager
     try {
       if (enabled) {
+        console.log(`[Settings] Starting ${server.name}...`)
         await mcpManager.startServer(server)
+        console.log(`[Settings] Started ${server.name}`)
       } else {
+        console.log(`[Settings] Stopping ${id}...`)
         await mcpManager.stopServer(id)
+        console.log(`[Settings] Stopped ${id}`)
       }
     } catch (error) {
       console.error(`[Settings] Failed to toggle MCP server ${server.name}:`, error)

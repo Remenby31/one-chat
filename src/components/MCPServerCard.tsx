@@ -158,7 +158,7 @@ export function MCPServerCard({
         {/* Actions */}
         <div className="flex items-center gap-2">
           <Switch
-            checked={server.state === 'connected' || server.state === 'connecting'}
+            checked={server.enabled}
             onCheckedChange={(checked) => onToggle(server.id, checked)}
             className="data-[state=checked]:bg-primary"
             disabled={isActive}

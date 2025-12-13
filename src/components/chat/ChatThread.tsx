@@ -83,7 +83,7 @@ export const ChatThread: FC<ChatThreadProps> = ({
         <div
           className="@container flex flex-1 flex-col min-h-0 bg-transparent"
           style={{
-            ['--thread-max-width' as string]: '65rem',
+            ['--thread-max-width' as string]: '48rem',
           }}
         >
           <div className="relative flex flex-1 flex-col min-h-0 bg-transparent">

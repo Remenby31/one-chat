@@ -59,7 +59,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) =>
   return (
     <div
       ref={viewportRef}
-      className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4 pt-20 pb-16 bg-transparent"
+      className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4 pt-20 pb-40 bg-transparent"
     >
       {/* Messages */}
       {messages.map((message, index) => {

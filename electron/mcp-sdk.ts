@@ -72,7 +72,6 @@ export class MCPSDKManager {
         await this.stopServer(config.id);
       }
 
-
       let transport: Transport;
 
       if (config.command) {
@@ -150,10 +149,8 @@ export class MCPSDKManager {
 
       await Promise.race([connectPromise, timeoutPromise]);
 
-      // Update state
+      // Update state and notify renderer
       instance.state = 'connected';
-
-      // Notify renderer
       this.notifyStateChange(config.id, 'connected');
 
       return { success: true };
@@ -447,7 +444,10 @@ export class MCPSDKManager {
    */
   private notifyStateChange(serverId: string, state: 'connecting' | 'connected' | 'error' | 'disconnected', error?: string): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      console.log(`[MCP-SDK] Sending to renderer: ${serverId} -> ${state}`);
       this.mainWindow.webContents.send('mcp:state-changed', { serverId, state, error });
+    } else {
+      console.warn(`[MCP-SDK] Cannot send - mainWindow is ${this.mainWindow ? 'destroyed' : 'NULL'}`);
     }
   }
 }
