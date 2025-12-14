@@ -74,6 +74,58 @@ function App() {
     if (configInitialized.current) return
     configInitialized.current = true
 
+    // IMPORTANT: Register listeners BEFORE starting servers to avoid race conditions
+    // where state change events arrive before listeners are registered
+
+    // Sync MCP servers state with config file via file watcher
+    if (window.electronAPI?.onConfigChanged) {
+      const handleConfigChanged = (filename: string, data: any) => {
+        if (filename === 'mcpServers.json') {
+          // Preserve runtime state from React (SDK events are the source of truth for state)
+          // File watcher should only update config properties, not state
+          setMcpServers(prevServers => {
+            return data.map((newServer: MCPServer) => {
+              const existing = prevServers.find(s => s.id === newServer.id)
+              if (existing) {
+                // Preserve existing runtime state (state, error) from React
+                // Only update config properties from file
+                return {
+                  ...newServer,
+                  state: existing.state,
+                  error: existing.error
+                }
+              }
+              // New server - use state from file or default to idle
+              return { ...newServer, state: newServer.state || 'idle' }
+            })
+          })
+        }
+      }
+
+      window.electronAPI.onConfigChanged(handleConfigChanged)
+    }
+
+    // Listen for MCP server state changes from main process
+    // State is runtime-only, NOT persisted to file (config file = configuration only)
+    // MUST be registered before starting servers!
+    let stateChangeUnsubscribe: (() => void) | undefined
+    if (window.electronAPI?.onMcpStateChanged) {
+      stateChangeUnsubscribe = window.electronAPI.onMcpStateChanged((data) => {
+        const { serverId, state, error } = data
+
+        setMcpServers(prevServers =>
+          prevServers.map(server =>
+            server.id === serverId
+              ? { ...server, state: state as MCPServer['state'], error }
+              : server
+          )
+        )
+        // Note: State is NOT written to file - it's runtime only
+        // The SDK is the source of truth for state
+      })
+    }
+
+    // NOW load config and start servers (after listeners are registered)
     const loadConfig = async () => {
       if (window.electronAPI) {
         // Use Electron file storage
@@ -138,54 +190,6 @@ function App() {
       console.error('[App] Stack trace:', error?.stack)
       showGlobalErrorToast(error)
     })
-
-    // Sync MCP servers state with config file via file watcher
-    if (window.electronAPI?.onConfigChanged) {
-      const handleConfigChanged = (filename: string, data: any) => {
-        if (filename === 'mcpServers.json') {
-          // Preserve runtime state from React (SDK events are the source of truth for state)
-          // File watcher should only update config properties, not state
-          setMcpServers(prevServers => {
-            return data.map((newServer: MCPServer) => {
-              const existing = prevServers.find(s => s.id === newServer.id)
-              if (existing) {
-                // Preserve existing runtime state (state, error) from React
-                // Only update config properties from file
-                return {
-                  ...newServer,
-                  state: existing.state,
-                  error: existing.error
-                }
-              }
-              // New server - use state from file or default to idle
-              return { ...newServer, state: newServer.state || 'idle' }
-            })
-          })
-        }
-      }
-
-      window.electronAPI.onConfigChanged(handleConfigChanged)
-    }
-
-    // Listen for MCP server state changes from main process
-    // State is runtime-only, NOT persisted to file (config file = configuration only)
-    let stateChangeUnsubscribe: (() => void) | undefined
-    if (window.electronAPI?.onMcpStateChanged) {
-      stateChangeUnsubscribe = window.electronAPI.onMcpStateChanged((data) => {
-        const { serverId, state, error } = data
-        console.log(`[App] MCP state changed: ${serverId} -> ${state}`)
-
-        setMcpServers(prevServers =>
-          prevServers.map(server =>
-            server.id === serverId
-              ? { ...server, state: state as MCPServer['state'], error }
-              : server
-          )
-        )
-        // Note: State is NOT written to file - it's runtime only
-        // The SDK is the source of truth for state
-      })
-    }
 
     // Cleanup: stop all servers and unregister listener on unmount
     return () => {

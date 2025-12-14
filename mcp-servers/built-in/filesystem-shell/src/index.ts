@@ -28,6 +28,18 @@ import { EditToolInputSchema, handleEditTool } from './tools/edit.js';
 import { BashToolInputSchema, handleBashTool } from './tools/bash.js';
 import { GlobToolInputSchema, handleGlobTool } from './tools/glob.js';
 import { GrepToolInputSchema, handleGrepTool } from './tools/grep.js';
+import { IS_WINDOWS } from './utils/path.js';
+
+/**
+ * Get platform-specific bash description
+ */
+function getBashDescription(): string {
+  if (IS_WINDOWS) {
+    return 'Execute shell commands directly on this Windows machine using PowerShell. Stateless execution - no context preserved between calls.';
+  } else {
+    return 'Execute shell commands directly on this Unix/Linux/macOS machine using bash or zsh. Stateless execution - no context preserved between calls.';
+  }
+}
 
 /**
  * Create and configure MCP server
@@ -165,8 +177,7 @@ async function main() {
         },
         {
           name: 'bash',
-          description:
-            'Execute shell command with cross-platform shell detection (cmd/PowerShell on Windows, bash/zsh on Unix).',
+          description: getBashDescription(),
           inputSchema: {
             type: 'object',
             properties: {

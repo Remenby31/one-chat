@@ -2,7 +2,7 @@
  * Bash/Shell Tool - Cross-platform command execution
  *
  * Features:
- * - Automatic shell detection (cmd/PowerShell on Windows, bash/zsh on Unix)
+ * - Automatic shell detection (PowerShell on Windows, bash/zsh on Unix)
  * - Environment variable handling
  * - PATH management
  * - Timeout support

@@ -2,7 +2,7 @@
  * Cross-platform process spawning utilities
  *
  * Handles shell differences:
- * - Windows: cmd.exe, PowerShell
+ * - Windows: PowerShell
  * - Unix/Linux: bash, sh, zsh
  * - macOS: zsh (default on modern macOS), bash
  */
@@ -32,8 +32,7 @@ export interface SpawnResult {
  */
 export function getDefaultShell(): string {
   if (IS_WINDOWS) {
-    // Prefer PowerShell over cmd for better scripting
-    return process.env.COMSPEC || 'cmd.exe';
+    return 'powershell.exe';
   }
 
   if (IS_MACOS) {
@@ -50,20 +49,9 @@ export function getDefaultShell(): string {
  */
 export function getShellCommandArgs(command: string): { shell: string; args: string[] } {
   if (IS_WINDOWS) {
-    const shell = process.env.COMSPEC || 'cmd.exe';
-
-    // Check if PowerShell
-    if (shell.toLowerCase().includes('powershell')) {
-      return {
-        shell,
-        args: ['-NoProfile', '-Command', command],
-      };
-    }
-
-    // cmd.exe
     return {
-      shell,
-      args: ['/d', '/s', '/c', command],
+      shell: 'powershell.exe',
+      args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
     };
   }
 

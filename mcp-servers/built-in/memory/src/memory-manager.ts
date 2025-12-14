@@ -14,6 +14,7 @@ import {
   extractWikiLinks,
   extractHashtags,
   normalizeNotePath,
+  normalizeSlashes,
   generateNoteId,
   parseMarkdownFile,
   writeMarkdownFile,
@@ -121,7 +122,7 @@ All notes should be accessible from this root note or connected through other no
     const { frontmatter, body } = await parseMarkdownFile(filePath);
     const stats = await fs.stat(filePath);
 
-    const relativePath = path.relative(this.config.vaultPath, filePath);
+    const relativePath = normalizeSlashes(path.relative(this.config.vaultPath, filePath));
     const title = path.basename(filePath, '.md');
     const links = extractWikiLinks(body);
     const tags = this.extractAllTags(body, frontmatter);
@@ -266,7 +267,7 @@ All notes should be accessible from this root note or connected through other no
     const note = await this.readNote(identifier);
     if (!note) return null;
 
-    const fullPath = path.join(this.config.vaultPath, note.path);
+    const fullPath = path.join(this.config.vaultPath, note.path.replace(/\//g, path.sep));
     const { frontmatter: currentFrontmatter, body } = await parseMarkdownFile(fullPath);
 
     const newContent = updates.content ?? body;
@@ -299,7 +300,7 @@ All notes should be accessible from this root note or connected through other no
     const note = await this.readNote(identifier);
     if (!note) return null;
 
-    const fullPath = path.join(this.config.vaultPath, note.path);
+    const fullPath = path.join(this.config.vaultPath, note.path.replace(/\//g, path.sep));
     const { frontmatter, body } = await parseMarkdownFile(fullPath);
 
     // Find and replace the old content
@@ -336,7 +337,7 @@ All notes should be accessible from this root note or connected through other no
       );
     }
 
-    const fullPath = path.join(this.config.vaultPath, note.path);
+    const fullPath = path.join(this.config.vaultPath, note.path.replace(/\//g, path.sep));
     await fs.unlink(fullPath);
 
     this.notesIndex.delete(note.id);

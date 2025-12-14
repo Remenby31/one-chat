@@ -71,12 +71,10 @@ export function useStreamingChat(
       activeServers.map(server => fetchToolsWithRetry(server))
     ).then(results => {
       const toolsMap: Record<string, MCPTool[]> = {}
-      let totalTools = 0
 
       results.forEach((result) => {
         if (result.status === 'fulfilled') {
           toolsMap[result.value.serverId] = result.value.tools
-          totalTools += result.value.tools.length
         }
       })
 

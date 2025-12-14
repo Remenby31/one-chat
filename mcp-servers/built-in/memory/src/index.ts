@@ -148,13 +148,13 @@ class MemoryServer {
         },
         {
           name: 'memory_read',
-          description: 'Read a note from the memory vault',
+          description: 'Read a note from the memory vault. Use the path (e.g., "folder/note") for unique identification.',
           inputSchema: {
             type: 'object',
             properties: {
               id: {
                 type: 'string',
-                description: 'Note ID, title, or path'
+                description: 'Note path (recommended, e.g., "folder/note"), title, or UUID. Use forward slashes for paths.'
               }
             },
             required: ['id']
@@ -198,7 +198,7 @@ class MemoryServer {
         },
         {
           name: 'memory_search',
-          description: 'Search notes by content, title, or tags. Supports multiple keywords for broader search.',
+          description: 'Search notes by content, title, path, or tags. Returns results with path for unique identification.',
           inputSchema: {
             type: 'object',
             properties: {

@@ -34,11 +34,23 @@ export function extractHashtags(content: string): string[] {
   return [...new Set(matches.map(tag => tag.substring(1)))];
 }
 
+/**
+ * Normalize path separators to forward slashes
+ * This ensures consistent path handling across Windows/Linux/macOS
+ * and allows LLMs to always use forward slashes
+ */
+export function normalizeSlashes(p: string): string {
+  return p.replace(/\\/g, '/');
+}
+
 export function normalizeNotePath(notePath: string): string {
-  if (notePath.endsWith('.md')) {
-    return notePath.slice(0, -3);
+  // First normalize slashes to forward slashes
+  let normalized = normalizeSlashes(notePath);
+  // Remove .md extension if present
+  if (normalized.endsWith('.md')) {
+    normalized = normalized.slice(0, -3);
   }
-  return notePath;
+  return normalized;
 }
 
 /**
