@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Trash2, Activity, Plug2, Circle, LoaderCircle, ShieldAlert, CheckCircle, XCircle } from "lucide-react"
-import type { MCPServer, MCPServerState } from "@/types/mcp"
+import { Trash2, Activity, Plug2, LoaderCircle, ShieldAlert } from "lucide-react"
+import type { MCPServer } from "@/types/mcp"
 import { cn } from "@/lib/utils"
 import { getMCPServerFaviconUrl } from "@/lib/mcpFavicon"
 
@@ -17,16 +17,6 @@ interface MCPServerCardProps {
   isTesting?: boolean
 }
 
-// UI configuration for each state
-const STATE_CONFIG: Record<MCPServerState, { label: string; color: string }> = {
-  idle: { label: 'Idle', color: 'gray' },
-  connecting: { label: 'Connecting', color: 'blue' },
-  connected: { label: 'Connected', color: 'green' },
-  disconnected: { label: 'Disconnected', color: 'gray' },
-  error: { label: 'Error', color: 'red' },
-  auth_required: { label: 'Auth Required', color: 'orange' },
-}
-
 export function MCPServerCard({
   server,
   onToggle,
@@ -37,40 +27,6 @@ export function MCPServerCard({
   onClick,
   isTesting = false
 }: MCPServerCardProps) {
-
-  const stateConfig = STATE_CONFIG[server.state] || STATE_CONFIG.idle
-
-  const getStatusColor = () => {
-    switch (stateConfig.color) {
-      case 'green':
-        return 'text-green-400'
-      case 'red':
-        return 'text-red-400'
-      case 'orange':
-        return 'text-orange-400'
-      case 'blue':
-        return 'text-blue-400'
-      default:
-        return 'text-gray-400'
-    }
-  }
-
-  const getStatusIcon = () => {
-    if (server.state === 'connecting') {
-      return <LoaderCircle className="h-3 w-3 animate-spin" />
-    }
-
-    switch (server.state) {
-      case 'connected':
-        return <CheckCircle className="h-3 w-3" />
-      case 'auth_required':
-        return <ShieldAlert className="h-3 w-3" />
-      case 'error':
-        return <XCircle className="h-3 w-3" />
-      default:
-        return <Circle className="h-3 w-3" />
-    }
-  }
 
   // Get favicon URL from server config
   const faviconUrl = getMCPServerFaviconUrl(server.command, server.args, server.httpUrl, 32)

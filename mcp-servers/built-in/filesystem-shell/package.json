@@ -1,0 +1,31 @@
+{
+  "name": "@jarvis/mcp-filesystem-shell",
+  "version": "1.0.0",
+  "description": "Cross-platform filesystem and shell tools for MCP",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "mcp-filesystem-shell": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.24.1",
+    "fast-glob": "^3.3.3",
+    "chardet": "^2.0.0",
+    "iconv-lite": "^0.6.3",
+    "file-type": "^19.6.0",
+    "tree-kill": "^1.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

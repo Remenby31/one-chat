@@ -46,7 +46,9 @@ export function MCPInjectedPrompts({ server }: MCPInjectedPromptsProps) {
           .map(prompt => {
             const type = detectPromptType(prompt.name)
             if (!type) return null
-            return { name: prompt.name, type, description: prompt.description }
+            const result: InjectedPrompt = { name: prompt.name, type }
+            if (prompt.description) result.description = prompt.description
+            return result
           })
           .filter((p): p is InjectedPrompt => p !== null)
 

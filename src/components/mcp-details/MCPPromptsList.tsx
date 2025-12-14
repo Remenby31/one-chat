@@ -49,11 +49,6 @@ export function MCPPromptsList({ server }: MCPPromptsListProps) {
     )
   })
 
-  // Get argument count
-  const getArgCount = (prompt: MCPPrompt): number => {
-    return prompt.arguments?.length || 0
-  }
-
   // Detect conventional prompt type from name
   const getPromptType = (name: string): string | null => {
     const normalized = name.toLowerCase().trim()

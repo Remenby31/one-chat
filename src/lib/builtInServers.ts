@@ -48,6 +48,17 @@ export const BUILT_IN_SERVERS: BuiltInServerDefinition[] = [
       // Default will be created in user data directory
     }
   },
+  {
+    id: 'builtin-filesystem-shell',
+    name: 'Filesystem & Shell',
+    icon: 'terminal',
+    category: 'filesystem',
+    command: 'node',
+    relativeServerPath: 'mcp-servers/built-in/filesystem-shell/dist/index.js',
+    requiresAuth: false,
+    authType: 'none',
+    env: {}
+  },
   // Add more built-in servers here as they are developed
   // Example:
   // {
