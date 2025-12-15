@@ -79,6 +79,24 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
   const hasToolCalls = displayToolCalls.length > 0
   const hasContent = !!message.content
 
+  // Detect error/status messages that shouldn't show copy button
+  const isStatusMessage = useMemo(() => {
+    const content = message.content?.trim() || ''
+    const statusPatterns = [
+      'Stopped.',
+      'Rate limit exceeded',
+      'Invalid API key',
+      'Model not found',
+      'Request error',
+      'Connection failed',
+      'An error occurred',
+      /^Error \d+/,
+    ]
+    return statusPatterns.some(pattern =>
+      typeof pattern === 'string' ? content.startsWith(pattern) : pattern.test(content)
+    )
+  }, [message.content])
+
   // Determine if we should show typing cursor
   // Show when streaming text and no tool calls yet
   const showTypingCursor = isStreaming &&
@@ -143,8 +161,8 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
           )}
         </AnimatePresence>
 
-        {/* Action bar - only show when not streaming */}
-        {!isStreaming && (hasContent || hasToolCalls) && (
+        {/* Action bar - only show when not streaming, not a status message, and no tool calls */}
+        {!isStreaming && !isStatusMessage && hasContent && !hasToolCalls && (
           <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -167,7 +185,7 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
 
             {isLast && onRegenerate && (
               <TooltipIconButton
-                tooltip="Refresh"
+                tooltip="Regenerate"
                 className="h-7 w-7 bg-transparent hover:bg-transparent"
                 onClick={handleRegenerate}
               >

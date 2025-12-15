@@ -417,6 +417,11 @@ export function useStreamingChat(
         // Execute each tool call
         const toolResults: APIMessage[] = []
         for (let i = 0; i < toolCalls.length; i++) {
+          // Check if aborted before each tool execution
+          if (abortController.signal.aborted) {
+            throw new Error('abort')
+          }
+
           const toolCall = toolCalls[i]
           const startTime = performance.now()
 
@@ -453,6 +458,12 @@ export function useStreamingChat(
 
             // Call the tool (tool call already added via updateStreamingToolCalls during streaming)
             const result = await mcpManager.callTool(serverId, toolName, args)
+
+            // Check if aborted after tool execution
+            if (abortController.signal.aborted) {
+              throw new Error('abort')
+            }
+
             const endTime = performance.now()
 
             // Update tool call with result
@@ -469,6 +480,11 @@ export function useStreamingChat(
               content: typeof result === 'string' ? result : JSON.stringify(result)
             })
           } catch (error) {
+            // Re-throw abort errors
+            if (error instanceof Error && error.message === 'abort') {
+              throw error
+            }
+
             const endTime = performance.now()
             console.error('[useStreamingChat] Tool call error:', error)
             const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -486,6 +502,11 @@ export function useStreamingChat(
               content: JSON.stringify({ error: errorMessage })
             })
           }
+        }
+
+        // Check if aborted before adding results
+        if (abortController.signal.aborted) {
+          throw new Error('abort')
         }
 
         // Add tool results to conversation for API
@@ -513,16 +534,36 @@ export function useStreamingChat(
     } catch (error) {
       console.error('[useStreamingChat] Error:', error)
 
-      // Format error for display
-      let errorMessage = '❌ Error'
-      let errorDetails = ''
+      // Format error for display - keep it minimal
+      let errorMessage = 'An error occurred.'
 
       if (error instanceof Error) {
         const errorMsg = error.message
 
         if (errorMsg.includes('abort')) {
-          errorMessage = '🛑 Generation Stopped'
-          errorDetails = '\n\nGeneration was stopped by user.'
+          // Clean up ALL messages with orphan tool_calls
+          const currentMsgs = useChatStore.getState().messages
+          const toolResponseIds = new Set(
+            currentMsgs.filter(m => m.role === 'tool' && m.tool_call_id).map(m => m.tool_call_id)
+          )
+
+          let needsCleanup = false
+          const cleanedMessages = currentMsgs.map(m => {
+            if (m.role === 'assistant' && m.tool_call_requests && m.tool_call_requests.length > 0) {
+              const allAnswered = m.tool_call_requests.every(tc => toolResponseIds.has(tc.id))
+              if (!allAnswered) {
+                needsCleanup = true
+                // Keep content but remove orphan tool_calls
+                return { ...m, tool_call_requests: undefined, toolCalls: undefined }
+              }
+            }
+            return m
+          })
+
+          if (needsCleanup) {
+            store.loadMessages(cleanedMessages)
+          }
+          errorMessage = 'Stopped.'
         } else {
           const httpMatch = errorMsg.match(/HTTP (\d+): (.+)/)
           if (httpMatch) {
@@ -531,35 +572,29 @@ export function useStreamingChat(
 
             try {
               const errorData = JSON.parse(jsonPart)
-              if (errorData.error) {
-                const { message, type, code } = errorData.error
+              const message = errorData.error?.message || jsonPart
 
-                if (statusCode === '429') {
-                  errorMessage = '⚠️ API Quota Exceeded'
-                  errorDetails = `\n\n**Error:** ${message}\n\n**Type:** ${type}\n**Code:** ${code}\n\nPlease check your API plan.`
-                } else if (statusCode === '401') {
-                  errorMessage = '🔒 Authentication Failed'
-                  errorDetails = `\n\n**Error:** ${message}\n\nPlease verify your API key in Settings.`
-                } else if (statusCode === '404') {
-                  errorMessage = '❌ Endpoint Not Found'
-                  errorDetails = `\n\n**Error:** ${message}\n\nPlease check your model configuration.`
-                } else {
-                  errorMessage = `⚠️ API Error (HTTP ${statusCode})`
-                  errorDetails = `\n\n**Error:** ${message}`
-                }
+              if (statusCode === '429') {
+                errorMessage = 'Rate limit exceeded. Please wait a moment.'
+              } else if (statusCode === '401') {
+                errorMessage = 'Invalid API key. Check your settings.'
+              } else if (statusCode === '404') {
+                errorMessage = 'Model not found. Check your configuration.'
+              } else if (statusCode === '400') {
+                errorMessage = 'Request error. Please try again.'
+              } else {
+                errorMessage = `Error ${statusCode}: ${message}`
               }
             } catch {
-              errorMessage = `⚠️ API Error (HTTP ${statusCode})`
-              errorDetails = `\n\n**Error:** ${errorMsg}`
+              errorMessage = `Error ${statusCode}`
             }
           } else {
-            errorMessage = '❌ Connection Error'
-            errorDetails = `\n\n**Error:** ${errorMsg}\n\nPlease check your network connection.`
+            errorMessage = 'Connection failed. Check your network.'
           }
         }
       }
 
-      store.updateLastMessage(`${errorMessage}${errorDetails}`)
+      store.updateLastMessage(errorMessage)
       store.finishGeneration()
     }
   }, [modelConfig, openaiTools, store])
@@ -572,6 +607,32 @@ export function useStreamingChat(
     store.clearMessages()
   }, [store])
 
+  // Regenerate the last assistant response
+  const regenerate = useCallback(() => {
+    const messages = useChatStore.getState().messages
+    if (messages.length === 0 || store.isGenerating) return
+
+    // Find the last user message
+    let lastUserIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserIndex = i
+        break
+      }
+    }
+
+    if (lastUserIndex === -1) return
+
+    const lastUserMessage = messages[lastUserIndex]
+
+    // Remove all messages after the last user message (assistant + tool messages)
+    const newMessages = messages.slice(0, lastUserIndex)
+    store.loadMessages(newMessages)
+
+    // Re-send the user message
+    sendMessage(lastUserMessage.content)
+  }, [store, sendMessage])
+
   return {
     messages: store.messages,
     isGenerating: store.isGenerating,
@@ -579,6 +640,7 @@ export function useStreamingChat(
     sendMessage,
     stopGeneration,
     clearChat,
+    regenerate,
     addAttachment: store.addAttachment,
     removeAttachment: store.removeAttachment,
   }

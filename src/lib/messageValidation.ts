@@ -78,19 +78,30 @@ export function prepareMessagesForAPI(messages: ChatMessage[]): APIMessage[] {
 /**
  * Validate tool message chains
  *
- * OpenAI requires that every 'tool' message must be preceded by an 'assistant'
- * message with a matching tool_call_id in its tool_calls array.
+ * OpenAI requires:
+ * 1. Every 'tool' message must be preceded by an 'assistant' with matching tool_call_id
+ * 2. Every 'assistant' message with tool_calls must be followed by tool responses for ALL tool_call_ids
  *
- * This function removes orphaned tool messages that would cause API errors.
+ * This function:
+ * - Removes orphaned tool messages (no matching assistant tool_call)
+ * - Adds synthetic "cancelled" responses for unanswered tool_calls (e.g., after user cancellation)
  */
 function validateToolChains(messages: APIMessage[]): APIMessage[] {
+  // First pass: collect all tool response IDs
+  const toolResponseIds = new Set<string>()
+  for (const msg of messages) {
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      toolResponseIds.add(msg.tool_call_id)
+    }
+  }
+
   // Build a set of valid tool_call_ids from assistant messages
   const validToolCallIds = new Set<string>()
 
   // Track which tool_call_ids have been "consumed" by a tool response
   const consumedToolCallIds = new Set<string>()
 
-  // First pass: collect all valid tool_call_ids
+  // Collect all tool_call_ids from assistant messages
   for (const msg of messages) {
     if (msg.role === 'assistant' && msg.tool_calls) {
       for (const toolCall of msg.tool_calls) {
@@ -99,12 +110,32 @@ function validateToolChains(messages: APIMessage[]): APIMessage[] {
     }
   }
 
-  // Second pass: validate and filter messages
+  // Second pass: validate and filter messages, adding cancelled responses where needed
   const validatedMessages: APIMessage[] = []
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i]
 
+    // Handle assistant messages with tool_calls
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      validatedMessages.push(msg)
+
+      // Check for unanswered tool_calls and add synthetic cancelled responses
+      for (const toolCall of msg.tool_calls) {
+        if (!toolResponseIds.has(toolCall.id)) {
+          console.warn('[messageValidation] Adding cancelled response for unanswered tool_call:', toolCall.id)
+          validatedMessages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ status: 'cancelled', message: 'Tool execution was stopped by user.' })
+          })
+          consumedToolCallIds.add(toolCall.id)
+        }
+      }
+      continue
+    }
+
+    // Handle tool messages
     if (msg.role === 'tool') {
       const toolCallId = msg.tool_call_id
 

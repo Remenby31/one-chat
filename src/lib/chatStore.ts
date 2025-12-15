@@ -107,14 +107,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Update the last message (for streaming)
+  // Also clears tool_call_requests if setting an error/status message
   updateLastMessage: (content) => {
     set((state) => {
       const messages = [...state.messages]
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1]
+        const isStatusMessage = content === 'Stopped.' || content.startsWith('Error') || content.includes('error')
         messages[messages.length - 1] = {
           ...lastMessage,
           content,
+          // Clear incomplete tool calls when setting status messages
+          ...(isStatusMessage && {
+            tool_call_requests: undefined,
+            toolCalls: undefined,
+          }),
         }
       }
       return { messages }
@@ -154,11 +161,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Stop generation (user cancellation)
   stopGeneration: () => {
-    const { abortController } = get()
+    const { abortController, messages } = get()
     if (abortController) {
       abortController.abort()
     }
-    set({ isGenerating: false, currentStreamingText: '', abortController: null })
+    // Clear isStreaming flag and remove incomplete tool_call_requests from streaming messages
+    const updatedMessages = messages.map(m => {
+      if (m.isStreaming) {
+        return {
+          ...m,
+          isStreaming: false,
+          streamingPhase: 'complete' as const,
+          tool_call_requests: undefined, // Remove incomplete tool calls
+          toolCalls: undefined,
+        }
+      }
+      return m
+    })
+    set({ messages: updatedMessages, isGenerating: false, currentStreamingText: '', abortController: null })
   },
 
   // Finish generation (normal completion)
