@@ -13,7 +13,7 @@ import { useOAuthCallback } from '@/hooks/useOAuthCallback'
 import { showSuccessToast, showOAuthErrorToast, showGlobalErrorToast } from '@/lib/errorToast'
 import { useThreadStore } from '@/lib/threadStore'
 import { useChatStore } from '@/lib/chatStore'
-import { DEFAULT_SYSTEM_PROMPT } from '@/lib/defaultSystemPrompt'
+import { loadSavedSystemPrompt } from '@/lib/defaultSystemPrompt'
 import { initializeBuiltInServers } from '@/lib/builtInServers'
 
 /**
@@ -211,7 +211,8 @@ function App() {
       await threadStore.loadThreads()
 
       // Always create a new thread on startup (fresh conversation experience)
-      await threadStore.createThread(DEFAULT_SYSTEM_PROMPT)
+      const systemPrompt = await loadSavedSystemPrompt()
+      await threadStore.createThread(systemPrompt)
       chatStore.clearMessages()
     }
 
@@ -343,7 +344,8 @@ function App() {
 
   // Thread management handlers
   const handleNewChat = async () => {
-    await threadStore.createThread(DEFAULT_SYSTEM_PROMPT)
+    const systemPrompt = await loadSavedSystemPrompt()
+    await threadStore.createThread(systemPrompt)
     chatStore.clearMessages()
   }
 

@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FormField } from "@/components/ui/form-field"
-import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown, Plug2, RotateCcw } from "lucide-react"
+import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown, Plug2, RotateCcw, FileText } from "lucide-react"
 import { MCPServerCard } from "@/components/MCPServerCard"
 import { MCPDialog } from "@/components/MCPDialog"
 import { MCPServerDetailsDialog } from "@/components/mcp-details/MCPServerDetailsDialog"
@@ -42,7 +42,7 @@ import {
 import { MessageDialog, useMessageDialog } from "@/components/MessageDialog"
 import { showSuccessToast, showErrorToast, showWarningToast } from "@/lib/errorToast"
 import { Textarea } from "@/components/ui/textarea"
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/defaultSystemPrompt"
+import { DEFAULT_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT } from "@/lib/defaultSystemPrompt"
 
 interface SettingsProps {
   open: boolean
@@ -92,6 +92,8 @@ export function Settings({
   const [loadingModels, setLoadingModels] = useState(false)
   const [openModelCombobox, setOpenModelCombobox] = useState(false)
   const [testingServers, setTestingServers] = useState<Set<string>>(new Set())
+  const [customSystemPrompt, setCustomSystemPrompt] = useState<string>("")
+  const [systemPromptLoaded, setSystemPromptLoaded] = useState(false)
   const { dialogState, showSuccess, showError, closeDialog } = useMessageDialog()
 
   // Update active tab when defaultTab or dialog opens
@@ -113,6 +115,15 @@ export function Settings({
         if (savedApiKeys) {
           setApiKeys(savedApiKeys)
         }
+
+        // Load custom system prompt
+        const savedSystemPrompt = await window.electronAPI.readConfig('systemPrompt.json')
+        if (savedSystemPrompt && savedSystemPrompt.prompt) {
+          setCustomSystemPrompt(savedSystemPrompt.prompt)
+        } else {
+          setCustomSystemPrompt(BASE_SYSTEM_PROMPT)
+        }
+        setSystemPromptLoaded(true)
 
         if (savedModels) {
           setModels(savedModels)
@@ -147,10 +158,20 @@ export function Settings({
         const savedModels = localStorage.getItem("models")
         const savedApiKeys = localStorage.getItem("apiKeys")
         const savedMcpServers = localStorage.getItem("mcpServers")
+        const savedSystemPrompt = localStorage.getItem("systemPrompt")
 
         if (savedApiKeys) {
           setApiKeys(JSON.parse(savedApiKeys))
         }
+
+        // Load custom system prompt
+        if (savedSystemPrompt) {
+          const parsed = JSON.parse(savedSystemPrompt)
+          setCustomSystemPrompt(parsed.prompt || BASE_SYSTEM_PROMPT)
+        } else {
+          setCustomSystemPrompt(BASE_SYSTEM_PROMPT)
+        }
+        setSystemPromptLoaded(true)
 
         if (savedModels) {
           const parsed = JSON.parse(savedModels)
@@ -337,6 +358,23 @@ export function Settings({
       localStorage.setItem("apiKeys", JSON.stringify(updatedKeys))
     }
     setApiKeys(updatedKeys)
+  }
+
+  // Save system prompt to storage
+  const saveSystemPrompt = async (prompt: string) => {
+    const data = { prompt }
+    if (window.electronAPI) {
+      await window.electronAPI.writeConfig('systemPrompt.json', data)
+    } else {
+      localStorage.setItem("systemPrompt", JSON.stringify(data))
+    }
+    setCustomSystemPrompt(prompt)
+    showSuccessToast("System prompt saved", "Your changes have been saved")
+  }
+
+  // Reset system prompt to default
+  const resetSystemPrompt = () => {
+    setCustomSystemPrompt(BASE_SYSTEM_PROMPT)
   }
 
   const handleAddApiKey = () => {
@@ -673,6 +711,12 @@ export function Settings({
               Endpoints
             </TabsTrigger>
             <TabsTrigger
+              value="systemprompt"
+              className="justify-start rounded-md data-[state=active]:bg-accent data-[state=active]:shadow-none"
+            >
+              System Prompt
+            </TabsTrigger>
+            <TabsTrigger
               value="mcp"
               className="justify-start rounded-md data-[state=active]:bg-accent data-[state=active]:shadow-none"
             >
@@ -813,6 +857,45 @@ export function Settings({
                 })}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="systemprompt" className="flex-1 flex flex-col mt-0 pt-8 px-6 pb-6 overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">System Prompt</h3>
+              <div className="flex gap-2">
+                <SlimButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetSystemPrompt}
+                  title="Reset to default"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </SlimButton>
+                <SlimButton
+                  size="sm"
+                  onClick={() => saveSystemPrompt(customSystemPrompt)}
+                >
+                  Save
+                </SlimButton>
+              </div>
+            </div>
+
+            {systemPromptLoaded ? (
+              <Textarea
+                value={customSystemPrompt}
+                onChange={(e) => setCustomSystemPrompt(e.target.value)}
+                placeholder="Enter system prompt..."
+                className="flex-1 font-mono text-sm resize-none"
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                Loading...
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground mt-3">
+              Date & time auto-injected
+            </p>
           </TabsContent>
 
           <TabsContent value="mcp" className="flex-1 overflow-y-auto mt-0 pt-8 px-6 pb-6 space-y-4">
