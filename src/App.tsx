@@ -395,6 +395,7 @@ function App() {
         <Settings
           open={isSettingsOpen}
           onOpenChange={setIsSettingsOpen}
+          currentModel={currentModel}
           onModelChange={handleModelChange}
           onModelsUpdate={handleModelsUpdate}
           defaultTab={settingsTab}

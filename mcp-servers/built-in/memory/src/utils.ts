@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import matter from 'gray-matter';
 import { v4 as uuidv4 } from 'uuid';
+import Fuse from 'fuse.js';
 import { MemoryNote, NoteFrontmatter, WikiLink } from './types.js';
 
 export async function ensureDirectory(dirPath: string): Promise<void> {
@@ -121,4 +122,60 @@ export function createCrossReference(fromNote: string, toNote: string): string {
 
 export function formatDate(date: Date): string {
   return date.toISOString().split('T')[0];
+}
+
+/**
+ * Find similar text chunks in content when exact match fails
+ * Used to provide "did you mean..." suggestions
+ */
+export function findSimilarChunks(
+  content: string,
+  searchText: string,
+  maxSuggestions: number = 3,
+  maxChunkLength: number = 150
+): string[] {
+  // Split content into meaningful chunks (paragraphs, sections, or significant lines)
+  const chunks: string[] = [];
+
+  // Split by double newlines (paragraphs) or markdown headers
+  const rawChunks = content.split(/\n\n+|\n(?=#{1,6}\s)/);
+
+  for (const chunk of rawChunks) {
+    const trimmed = chunk.trim();
+    // Only include chunks with meaningful content (>10 chars, not just whitespace/symbols)
+    if (trimmed.length > 10 && /\w{3,}/.test(trimmed)) {
+      chunks.push(trimmed);
+    }
+  }
+
+  // If no good chunks, fall back to lines
+  if (chunks.length === 0) {
+    const lines = content.split('\n').filter(l => l.trim().length > 10);
+    chunks.push(...lines);
+  }
+
+  if (chunks.length === 0) {
+    return [];
+  }
+
+  // Use Fuse.js for fuzzy matching
+  const fuse = new Fuse(chunks, {
+    includeScore: true,
+    threshold: 0.6, // More lenient for suggestions
+    ignoreLocation: true,
+    minMatchCharLength: 3
+  });
+
+  const results = fuse.search(searchText);
+
+  // Get top matches and truncate if needed
+  return results
+    .slice(0, maxSuggestions)
+    .map(result => {
+      const chunk = result.item;
+      if (chunk.length > maxChunkLength) {
+        return chunk.substring(0, maxChunkLength) + '...';
+      }
+      return chunk;
+    });
 }

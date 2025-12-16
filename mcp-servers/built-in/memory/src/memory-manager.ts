@@ -20,7 +20,8 @@ import {
   parseMarkdownFile,
   writeMarkdownFile,
   formatDate,
-  sanitizeFilename
+  sanitizeFilename,
+  findSimilarChunks
 } from './utils.js';
 
 export class MemoryManager {
@@ -310,7 +311,21 @@ All notes should be accessible from this root note or connected through other no
 
     // Find and replace the old content
     if (!body.includes(normalizedOldContent)) {
-      throw new Error(`Content section not found in note: "${normalizedOldContent}"`);
+      // Find similar sections to suggest
+      const suggestions = findSimilarChunks(body, normalizedOldContent, 3, 150);
+
+      let errorMessage = `Content not found in note "${note.title}".`;
+
+      if (suggestions.length > 0) {
+        errorMessage += `\n\nDid you mean one of these sections?\n`;
+        errorMessage += suggestions.map((s, i) => `${i + 1}. "${s}"`).join('\n');
+      } else {
+        // If no fuzzy matches, show a preview of the note content
+        const preview = body.length > 200 ? body.substring(0, 200) + '...' : body;
+        errorMessage += `\n\nNote content preview:\n"${preview}"`;
+      }
+
+      throw new Error(errorMessage);
     }
 
     const updatedBody = body.replace(normalizedOldContent, normalizedNewContent);

@@ -47,6 +47,7 @@ import { DEFAULT_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT } from "@/lib/defaultSystemPr
 interface SettingsProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  currentModel: ModelConfig | null
   onModelChange: (model: ModelConfig | null) => void
   onModelsUpdate?: () => void
   defaultTab?: string
@@ -57,6 +58,7 @@ interface SettingsProps {
 export function Settings({
   open,
   onOpenChange,
+  currentModel,
   onModelChange,
   onModelsUpdate,
   defaultTab = 'models',
@@ -67,7 +69,8 @@ export function Settings({
   const [activeTab, setActiveTab] = useState(defaultTab)
   const [models, setModels] = useState<ModelConfig[]>([])
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
-  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  // Sync selectedModel with currentModel from parent
+  const [selectedModel, setSelectedModel] = useState<string | null>(currentModel?.id ?? null)
   // Use prop if provided, otherwise use local state
   const [localMcpServers, setLocalMcpServers] = useState<MCPServer[]>([])
   const mcpServers = propMcpServers ?? localMcpServers
@@ -103,6 +106,11 @@ export function Settings({
     }
   }, [defaultTab, open])
 
+  // Sync selectedModel with currentModel from parent (e.g., when changed via ModelSelector)
+  useEffect(() => {
+    setSelectedModel(currentModel?.id ?? null)
+  }, [currentModel])
+
   // Load models, API keys, and MCP servers from storage on mount
   useEffect(() => {
     const loadConfig = async () => {
@@ -127,10 +135,6 @@ export function Settings({
 
         if (savedModels) {
           setModels(savedModels)
-          if (savedModels.length > 0 && !selectedModel) {
-            setSelectedModel(savedModels[0].id)
-            onModelChange(savedModels[0])
-          }
         }
 
         // Only load MCP servers if not provided via props
@@ -176,10 +180,6 @@ export function Settings({
         if (savedModels) {
           const parsed = JSON.parse(savedModels)
           setModels(parsed)
-          if (parsed.length > 0 && !selectedModel) {
-            setSelectedModel(parsed[0].id)
-            onModelChange(parsed[0])
-          }
         }
 
         // Only load MCP servers if not provided via props
@@ -755,45 +755,57 @@ export function Settings({
               </div>
             ) : (
               <div className="space-y-2">
-                {models.map((model) => (
-                  <div
-                    key={model.id}
-                    className={`group relative rounded-lg border p-4 transition-colors hover:border-primary/50 ${
-                      selectedModel === model.id ? "border-primary bg-accent/50" : ""
-                    }`}
-                  >
-                    <button
-                      onClick={() => handleSelectModel(model.id)}
-                      className="w-full text-left"
+                {models.map((model) => {
+                  const modelApiKey = apiKeys.find(k => k.id === model.apiKeyId)
+                  const providerIcon = modelApiKey ? getProviderIcon(modelApiKey.baseURL) : null
+                  return (
+                    <div
+                      key={model.id}
+                      className={`group relative rounded-lg border p-4 transition-colors hover:border-primary/50 ${
+                        selectedModel === model.id ? "border-primary bg-accent/50" : ""
+                      }`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold">{model.name}</span>
-                            {selectedModel === model.id && (
-                              <Check className="h-4 w-4 text-primary" />
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            {model.model}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                            <Key className="h-3 w-3" />
-                            {apiKeys.find(k => k.id === model.apiKeyId)?.name || 'Unknown Endpoint'}
+                      <button
+                        onClick={() => handleSelectModel(model.id)}
+                        className="w-full text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          {providerIcon ? (
+                            <img
+                              src={`/icons/${providerIcon}.svg`}
+                              alt={modelApiKey?.name || 'Provider'}
+                              className="h-5 w-5 dark:invert flex-shrink-0"
+                            />
+                          ) : (
+                            <Key className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                          )}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">{model.name}</span>
+                              {selectedModel === model.id && (
+                                <Check className="h-4 w-4 text-primary" />
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground mt-1">
+                              {model.model}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {modelApiKey?.name || 'Unknown Endpoint'}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => handleDeleteModel(model.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleDeleteModel(model.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </TabsContent>
