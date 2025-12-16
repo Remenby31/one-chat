@@ -60,6 +60,54 @@ Jarvis is an Electron-based desktop chat application that integrates AI models v
 - `src/stores/threadStore.ts` - Zustand store for thread persistence:
   - Manages conversation threads with draft thread support (in-memory until first save)
   - Preserves drafts across `loadThreads()` calls, recovers from race conditions
+  - Auto-migrates v1 threads to v2 format with branching support
+
+### Message Branching System
+
+**Overview**: Clean conversation branching allowing users to explore multiple response paths without losing previous messages.
+
+**Core Concepts**:
+- Each message can have multiple "siblings" (alternative versions)
+- Regenerating creates a new sibling branch instead of destroying the old response
+- Editing a user message also creates a new branch
+- Active branch selected with navigation UI (`◀ 2/5 ▶`)
+
+**Implementation**:
+- `src/types/branching.ts` - Type definitions:
+  - `BranchedChatMessage`: Extends ChatMessage with `parentId`, `siblingGroupId`, `siblingIndex`
+  - `SiblingInfo`: Provides branch navigation data
+  - `BranchedThread`: v2 thread format with `activeBranches` tracking
+- `src/lib/branchStore.ts` - Zustand store for active branch selections
+- `src/lib/branchUtils.ts` - Utilities:
+  - `getSiblings()`: Get all alternative versions of a message
+  - `getActiveBranchMessages()`: Filter to show only active branch path
+  - `migrateThreadToV2()`: Auto-migrate v1 threads on load
+- `src/lib/branchStore.ts` - Manages which sibling is displayed per group
+
+**Regeneration Flow**:
+1. User clicks "Regenerate" on assistant message
+2. `useStreamingChat.regenerate()` creates new assistant message as sibling
+3. New message has `parentId` (user msg ID), `siblingGroupId`, and next `siblingIndex`
+4. Original response preserved (becomes `siblingIndex: 0`)
+5. Active branch switched to new response
+6. API request sent from scratch, avoiding old messages
+
+**Edit Flow**:
+1. User clicks "Edit" on user message, opens `EditMessageDialog`
+2. `useStreamingChat.editUserMessage()` creates new user message as sibling
+3. All subsequent messages (assistant, tools, etc.) become children of this branch
+4. New conversation continues from edited message
+
+**UI Components**:
+- `src/components/chat/BranchNavigator.tsx` - Navigation UI with `◀ n/total ▶` indicator
+- `src/components/chat/EditMessageDialog.tsx` - Dialog for editing user messages
+- AssistantMessage & UserMessage: Show navigator when siblings exist
+
+**Storage**:
+- Threads v2 store `activeBranches: Record<groupId, index>` in `conversations/{threadId}.json`
+- Threads v1 auto-migrated on first load
+- All message versions preserved in thread file
+
 - `src/types/model.ts` - Defines ModelConfig interface: `{ id, name, apiKeyId, model, temperature?, maxTokens?, systemPrompt? }`
 - `src/types/apiKey.ts` - Defines ApiKey interface: `{ id, name, key, baseURL }`
   - Provider detection from API key prefix (OpenAI, Anthropic, Google, Cohere, Mistral, etc.)

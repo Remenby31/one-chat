@@ -15,6 +15,7 @@ import {
   extractHashtags,
   normalizeNotePath,
   normalizeSlashes,
+  normalizeNewlines,
   generateNoteId,
   parseMarkdownFile,
   writeMarkdownFile,
@@ -303,12 +304,16 @@ All notes should be accessible from this root note or connected through other no
     const fullPath = path.join(this.config.vaultPath, note.path.replace(/\//g, path.sep));
     const { frontmatter, body } = await parseMarkdownFile(fullPath);
 
+    // Normalize escaped newlines from LLM output
+    const normalizedOldContent = normalizeNewlines(oldContent);
+    const normalizedNewContent = normalizeNewlines(newContent);
+
     // Find and replace the old content
-    if (!body.includes(oldContent)) {
-      throw new Error(`Content section not found in note: "${oldContent}"`);
+    if (!body.includes(normalizedOldContent)) {
+      throw new Error(`Content section not found in note: "${normalizedOldContent}"`);
     }
 
-    const updatedBody = body.replace(oldContent, newContent);
+    const updatedBody = body.replace(normalizedOldContent, normalizedNewContent);
     const updatedFrontmatter: NoteFrontmatter = {
       ...frontmatter,
       modified: formatDate(new Date())

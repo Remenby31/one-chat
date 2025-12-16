@@ -52,6 +52,13 @@ export interface ChatMessage {
       arguments: string
     }
   }>
+  // Branching support
+  /** ID of the parent message (user message for assistant, previous message for user) */
+  parentId?: string
+  /** Shared identifier for all sibling alternatives */
+  siblingGroupId?: string
+  /** Position in sibling group (0 = original, 1+ = regenerations/edits) */
+  siblingIndex?: number
 }
 
 interface ChatState {

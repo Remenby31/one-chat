@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FormField } from "@/components/ui/form-field"
-import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown, Plug2, RotateCcw, FileText } from "lucide-react"
+import { Plus, Trash2, Sun, Moon, Monitor, Check, Key, Download, Upload, DollarSign, Eye, EyeOff, ChevronsUpDown, Plug2, RotateCcw } from "lucide-react"
 import { MCPServerCard } from "@/components/MCPServerCard"
 import { MCPDialog } from "@/components/MCPDialog"
 import { MCPServerDetailsDialog } from "@/components/mcp-details/MCPServerDetailsDialog"

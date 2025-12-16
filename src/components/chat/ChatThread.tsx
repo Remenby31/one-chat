@@ -72,7 +72,7 @@ export const ChatThread: FC<ChatThreadProps> = ({
   onMcpToggle,
   onSettingsClick,
 }) => {
-  const { messages, isGenerating, sendMessage, stopGeneration, regenerate } =
+  const { messages, isGenerating, sendMessage, stopGeneration, regenerate, editUserMessage } =
     useStreamingChat(modelConfig, mcpServers)
 
   const isEmpty = messages.length === 0
@@ -93,6 +93,7 @@ export const ChatThread: FC<ChatThreadProps> = ({
                 <MessageList
                   messages={messages}
                   onRegenerate={regenerate}
+                  onEditUserMessage={editUserMessage}
                 />
                 {/* Composer positioned absolutely to allow messages to scroll behind it */}
                 <Composer

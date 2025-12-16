@@ -1,20 +1,35 @@
 import type { FC } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { ArrowDownIcon } from 'lucide-react'
 import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import type { ChatMessage } from '@/lib/chatStore'
 import { getToolResultsForMessage } from '@/lib/toolCallUtils'
+import { useBranchStore } from '@/lib/branchStore'
+import { getActiveBranchMessages, getSiblingInfo } from '@/lib/branchUtils'
+import type { BranchedChatMessage, SiblingInfo } from '@/types/branching'
 
 interface MessageListProps {
   messages: ChatMessage[]
   onRegenerate?: () => void
+  onEditUserMessage?: (messageId: string, newContent: string) => void
 }
 
-export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) => {
+export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate, onEditUserMessage }) => {
   const viewportRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
+  const { activeBranches, setActiveBranch } = useBranchStore()
+
+  // Filter messages to show only active branch
+  const visibleMessages = useMemo(() => {
+    return getActiveBranchMessages(messages as BranchedChatMessage[], activeBranches)
+  }, [messages, activeBranches])
+
+  // Handle branch navigation
+  const handleNavigateBranch = useCallback((groupId: string, newIndex: number) => {
+    setActiveBranch(groupId, newIndex)
+  }, [setActiveBranch])
 
   // Check if we should show scroll button
   useEffect(() => {
@@ -44,7 +59,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) =>
     if (isNearBottom) {
       viewport.scrollTop = viewport.scrollHeight
     }
-  }, [messages])
+  }, [visibleMessages])
 
   const scrollToBottom = () => {
     const viewport = viewportRef.current
@@ -62,25 +77,40 @@ export const MessageList: FC<MessageListProps> = ({ messages, onRegenerate }) =>
       className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll px-4 pt-20 pb-40 bg-transparent"
     >
       {/* Messages */}
-      {messages.map((message, index) => {
+      {visibleMessages.map((message, index) => {
+        // Get sibling info for this message (for branch navigation UI)
+        const siblingInfo = getSiblingInfo(
+          messages as BranchedChatMessage[],
+          message,
+          activeBranches
+        )
+
         // For assistant messages, collect tool results from subsequent tool messages
         const toolResults =
           message.role === 'assistant' && message.tool_call_requests
-            ? getToolResultsForMessage(messages, index)
+            ? getToolResultsForMessage(visibleMessages, index)
             : {}
 
         // Skip tool messages (they're shown in assistant messages)
         if (message.role === 'tool') return null
 
         return message.role === 'user' ? (
-          <UserMessage key={message.id} message={message} />
+          <UserMessage
+            key={message.id}
+            message={message}
+            siblingInfo={siblingInfo}
+            onNavigateBranch={handleNavigateBranch}
+            onEdit={onEditUserMessage}
+          />
         ) : message.role === 'assistant' ? (
           <AssistantMessage
             key={message.id}
             message={message}
-            isLast={index === messages.length - 1}
+            isLast={index === visibleMessages.length - 1}
             onRegenerate={onRegenerate}
             toolResults={toolResults}
+            siblingInfo={siblingInfo}
+            onNavigateBranch={handleNavigateBranch}
           />
         ) : null
       })}

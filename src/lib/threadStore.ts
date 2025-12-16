@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { generateConversationTitle } from './titleGenerator'
 import type { ChatMessage } from './chatStore'
+import { useBranchStore } from './branchStore'
+import { migrateThreadToV2 } from './branchUtils'
+import type { BranchedThread, LegacyThread } from '@/types/branching'
 
 export interface ThreadMetadata {
   id: string
@@ -15,6 +18,9 @@ interface Thread {
   metadata: ThreadMetadata
   messages: ChatMessage[]
   systemPrompt?: string
+  // Branching support (v2)
+  activeBranches?: Record<string, number>
+  version?: 2
 }
 
 interface ThreadState {
@@ -199,9 +205,27 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         return { messages: [] }
       }
 
-      // Load thread data
+      // Check if it's a draft thread first
+      const draftThread = get().draftThreads.get(threadId)
+      if (draftThread) {
+        // Load from draft (in-memory)
+        set({
+          currentThreadId: threadId,
+          currentSystemPrompt: draftThread.systemPrompt || null
+        })
+
+        // Clear branches for new draft thread
+        useBranchStore.getState().clearBranches()
+
+        return {
+          messages: draftThread.messages,
+          systemPrompt: draftThread.systemPrompt
+        }
+      }
+
+      // Load thread data from disk
       const filename = generateThreadFileName(threadId, thread.title)
-      let threadData: Thread | null = null
+      let threadData: Thread | LegacyThread | BranchedThread | null = null
 
       if (window.electronAPI) {
         threadData = await window.electronAPI.readConfig(`conversations/${filename}`)
@@ -215,15 +239,21 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         return { messages: [] }
       }
 
+      // Migrate to v2 if needed (handles branching)
+      const migratedData = migrateThreadToV2(threadData as LegacyThread | BranchedThread)
+
+      // Load branches into branch store
+      useBranchStore.getState().loadBranches(migratedData.activeBranches)
+
       // Set as current thread
       set({
         currentThreadId: threadId,
-        currentSystemPrompt: threadData.systemPrompt || null
+        currentSystemPrompt: migratedData.systemPrompt || null
       })
 
       return {
-        messages: threadData.messages,
-        systemPrompt: threadData.systemPrompt
+        messages: migratedData.messages,
+        systemPrompt: migratedData.systemPrompt
       }
     } catch (error) {
       console.error(`[ThreadStore] Failed to switch thread ${threadId}:`, error)
@@ -298,10 +328,15 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         systemPrompt
       }
 
+      // Get current branch state
+      const activeBranches = useBranchStore.getState().activeBranches
+
       const threadData: Thread = {
         metadata: updatedMetadata,
         messages,
-        systemPrompt
+        systemPrompt,
+        activeBranches,
+        version: 2
       }
 
       // Save to storage

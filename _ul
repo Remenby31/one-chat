@@ -1,0 +1,9 @@
+Get-ChildItem : Impossible de trouver le chemin d'accäs ÆC:\Users\cruve\OneDrive\Projets\one-chat\:APPDATA\Ø, car il 
+n'existe pas.
+Au caractäre Ligne:1 : 1
++ Get-ChildItem -Path :APPDATA\Jarvis -Recurse -File | Select-Object Fu ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\Users\cruve\...-chat\:APPDATA\:String) [Get-ChildItem], ItemNotFound 
+   Exception
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetChildItemCommand
+ 

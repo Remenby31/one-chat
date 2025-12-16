@@ -82,6 +82,19 @@ export async function parseMarkdownFile(filePath: string): Promise<{
   };
 }
 
+/**
+ * Normalize escaped newlines in content
+ * LLMs sometimes send literal \n instead of actual newline characters
+ */
+export function normalizeNewlines(content: string): string {
+  // Replace literal \n (backslash followed by n) with actual newline
+  // But preserve already correct newlines and escaped backslashes
+  return content
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t');
+}
+
 export async function writeMarkdownFile(
   filePath: string,
   content: string,
@@ -94,8 +107,11 @@ export async function writeMarkdownFile(
     }
     return acc;
   }, {} as NoteFrontmatter);
-  
-  const matterContent = matter.stringify(content, cleanFrontmatter);
+
+  // Normalize escaped newlines from LLM output
+  const normalizedContent = normalizeNewlines(content);
+
+  const matterContent = matter.stringify(normalizedContent, cleanFrontmatter);
   await fs.writeFile(filePath, matterContent, 'utf-8');
 }
 

@@ -6,8 +6,10 @@ import { m, LazyMotion, domAnimation, AnimatePresence } from 'motion/react'
 import { TooltipIconButton } from '@/components/ui/tooltip-icon-button'
 import { ToolCallDisplay } from '@/components/chat/ToolCall'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
+import { BranchNavigator } from '@/components/chat/BranchNavigator'
 import type { ChatMessage, ToolCall } from '@/lib/chatStore'
 import { convertToolCallRequestToToolCall } from '@/lib/toolCallUtils'
+import type { SiblingInfo } from '@/types/branching'
 
 // Shared animation configs
 const messageAnimation = {
@@ -31,6 +33,8 @@ interface AssistantMessageProps {
   isLast: boolean
   onRegenerate?: () => void
   toolResults?: Record<string, string>
+  siblingInfo?: SiblingInfo | null
+  onNavigateBranch?: (groupId: string, newIndex: number) => void
 }
 
 export const AssistantMessage: FC<AssistantMessageProps> = ({
@@ -38,6 +42,8 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
   isLast,
   onRegenerate,
   toolResults = {},
+  siblingInfo,
+  onNavigateBranch,
 }) => {
   const [copied, setCopied] = useState(false)
 
@@ -149,7 +155,7 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2 }}
-              className={cn('mx-2 space-y-1 pb-1', hasContent && 'mt-1.5')}
+              className={cn('mx-2 space-y-1', hasContent && 'mt-1 mb-1')}
             >
               {displayToolCalls.map((toolCall) => (
                 <ToolCallDisplay
@@ -167,8 +173,16 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.1 }}
-            className="mt-2 ml-2 flex gap-1 text-muted-foreground"
+            className="mt-2 ml-2 flex items-center gap-1 text-muted-foreground"
           >
+            {/* Branch navigator */}
+            {siblingInfo && siblingInfo.totalCount > 1 && onNavigateBranch && (
+              <BranchNavigator
+                siblingInfo={siblingInfo}
+                onNavigate={(newIndex) => onNavigateBranch(siblingInfo.groupId, newIndex)}
+              />
+            )}
+
             {hasContent && (
               <TooltipIconButton
                 tooltip="Copy"

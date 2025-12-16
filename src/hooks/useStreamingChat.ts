@@ -1,12 +1,20 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useChatStore, type ToolCall } from '@/lib/chatStore'
+import { useChatStore, type ToolCall, type ChatMessage } from '@/lib/chatStore'
 import { useThreadStore } from '@/lib/threadStore'
+import { useBranchStore } from '@/lib/branchStore'
 import type { ModelConfig } from '@/types/model'
 import type { ApiKey } from '@/types/apiKey'
 import type { MCPServer, MCPTool } from '@/types/mcp'
 import { mcpManager } from '@/lib/mcpManager'
 import { getInjectedMessages } from '@/lib/mcpPromptInjection'
 import { prepareMessagesForAPI, type APIMessage } from '@/lib/messageValidation'
+import {
+  findLastUserMessage,
+  getNextSiblingIndex,
+  generateSiblingGroupId,
+  getActiveBranchMessages,
+} from '@/lib/branchUtils'
+import type { BranchedChatMessage } from '@/types/branching'
 
 /**
  * Main hook for managing streaming chat with MCP tool support
@@ -213,7 +221,7 @@ export function useStreamingChat(
       const userConversationMessages = prepareMessagesForAPI(currentMessages)
 
       // Build final conversation: injected prompts + user conversation
-      let conversationMessages: APIMessage[] = [
+      const conversationMessages: APIMessage[] = [
         ...injectedMessages,
         ...userConversationMessages
       ]
@@ -607,31 +615,281 @@ export function useStreamingChat(
     store.clearMessages()
   }, [store])
 
-  // Regenerate the last assistant response
-  const regenerate = useCallback(() => {
-    const messages = useChatStore.getState().messages
+  // Regenerate the last assistant response (creates a new branch)
+  const regenerate = useCallback(async () => {
+    const messages = useChatStore.getState().messages as BranchedChatMessage[]
+    const branchStore = useBranchStore.getState()
+
     if (messages.length === 0 || store.isGenerating) return
 
-    // Find the last user message
-    let lastUserIndex = -1
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        lastUserIndex = i
-        break
+    // Get messages on active branch path
+    const activeBranchMessages = getActiveBranchMessages(messages, branchStore.activeBranches)
+
+    // Find the last user message on active branch
+    const lastUserMessage = findLastUserMessage(activeBranchMessages)
+    if (!lastUserMessage) return
+
+    // Generate sibling group ID for the new assistant response
+    const siblingGroupId = generateSiblingGroupId(lastUserMessage.id, 'assistant')
+    const nextIndex = getNextSiblingIndex(messages, siblingGroupId)
+
+    // If this is the first regeneration, we need to update the original response
+    // to have branching metadata (so it becomes sibling 0)
+    if (nextIndex === 1) {
+      // Find the original assistant response for this user message
+      const originalAssistant = messages.find(
+        m => m.role === 'assistant' && m.parentId === lastUserMessage.id && !m.siblingGroupId
+      )
+      if (originalAssistant) {
+        store.updateMessageById(originalAssistant.id, {
+          siblingGroupId,
+          siblingIndex: 0,
+        })
       }
     }
 
-    if (lastUserIndex === -1) return
+    // Start generation
+    store.startGeneration()
 
-    const lastUserMessage = messages[lastUserIndex]
+    // Add new assistant message as a sibling branch
+    const newMsgId = store.addMessage({
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+      parentId: lastUserMessage.id,
+      siblingGroupId,
+      siblingIndex: nextIndex,
+    })
 
-    // Remove all messages after the last user message (assistant + tool messages)
-    const newMessages = messages.slice(0, lastUserIndex)
-    store.loadMessages(newMessages)
+    // Set the new branch as active
+    branchStore.setActiveBranch(siblingGroupId, nextIndex)
 
-    // Re-send the user message
-    sendMessage(lastUserMessage.content)
-  }, [store, sendMessage])
+    // Now continue with API call (reuse the streaming logic)
+    await continueGeneration(lastUserMessage.content, newMsgId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, modelConfig, openaiTools, mcpServers, threadStore.currentSystemPrompt])
+
+  // Edit a user message (creates a new branch)
+  const editUserMessage = useCallback(async (messageId: string, newContent: string) => {
+    const messages = useChatStore.getState().messages as BranchedChatMessage[]
+    const branchStore = useBranchStore.getState()
+
+    if (store.isGenerating) return
+
+    const originalMessage = messages.find(m => m.id === messageId)
+    if (!originalMessage || originalMessage.role !== 'user') return
+
+    // Find the parent of the original message (message before it on active branch)
+    const originalIndex = messages.findIndex(m => m.id === messageId)
+    const parentMessage = originalIndex > 0 ? messages[originalIndex - 1] : null
+
+    // Generate sibling group ID for user message variants
+    const siblingGroupId = originalMessage.siblingGroupId || generateSiblingGroupId(messageId, 'user')
+    const nextIndex = getNextSiblingIndex(messages, siblingGroupId)
+
+    // If this is the first edit, update the original to have branching metadata
+    if (!originalMessage.siblingGroupId) {
+      store.updateMessageById(messageId, {
+        siblingGroupId,
+        siblingIndex: 0,
+        parentId: parentMessage?.id,
+      })
+    }
+
+    // Add new user message as a sibling branch
+    store.addMessage({
+      role: 'user',
+      content: newContent,
+      attachments: originalMessage.attachments,
+      parentId: parentMessage?.id,
+      siblingGroupId,
+      siblingIndex: nextIndex,
+    })
+
+    // Set the new branch as active
+    branchStore.setActiveBranch(siblingGroupId, nextIndex)
+
+    // Start generation and add assistant placeholder
+    store.startGeneration()
+
+    const newUserSiblingGroupId = generateSiblingGroupId(messageId, 'assistant')
+    const assistantMsgId = store.addMessage({
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+      parentId: messageId, // Parent is the original user message ID (group identifier)
+      siblingGroupId: newUserSiblingGroupId,
+      siblingIndex: 0,
+    })
+
+    // Continue with API call
+    await continueGeneration(newContent, assistantMsgId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, modelConfig, openaiTools, mcpServers, threadStore.currentSystemPrompt])
+
+  // Internal function to continue generation after regenerate/edit
+  const continueGeneration = useCallback(async (userContent: string, assistantMessageId: string) => {
+    // Check if model is configured
+    if (!modelConfig) {
+      store.updateMessageById(assistantMessageId, {
+        content: 'Welcome to Jarvis! To get started, configure an AI model by clicking Settings in the sidebar.',
+        isStreaming: false,
+      })
+      store.finishGeneration()
+      return
+    }
+
+    // Get API key
+    let apiKeys: ApiKey[] = []
+    if (window.electronAPI) {
+      apiKeys = await window.electronAPI.readConfig('apiKeys.json') || []
+    } else {
+      apiKeys = JSON.parse(localStorage.getItem('apiKeys') || '[]')
+    }
+    const apiKey = apiKeys.find(k => k.id === modelConfig.apiKeyId)
+
+    if (!apiKey) {
+      store.updateMessageById(assistantMessageId, {
+        content: 'Endpoint not found. Please check your model configuration in Settings.',
+        isStreaming: false,
+      })
+      store.finishGeneration()
+      return
+    }
+
+    // Resolve environment variables in API key
+    let resolvedApiKey = apiKey.key
+    if (window.electronAPI && apiKey.key.startsWith('$')) {
+      resolvedApiKey = await window.electronAPI.resolveEnvVar(apiKey.key)
+    }
+
+    // Create abort controller
+    const abortController = new AbortController()
+    store.setAbortController(abortController)
+
+    try {
+      // Get current messages and filter to active branch
+      const currentMessages = useChatStore.getState().messages as BranchedChatMessage[]
+      const branchStore = useBranchStore.getState()
+      const activeBranchMessages = getActiveBranchMessages(currentMessages, branchStore.activeBranches)
+
+      // Fetch and inject conventional prompts from MCP servers
+      let injectedMessages: APIMessage[] = []
+      try {
+        injectedMessages = await getInjectedMessages(mcpServers) as APIMessage[]
+      } catch (error) {
+        console.warn('[useStreamingChat] Failed to fetch conventional prompts:', error)
+      }
+
+      // Add system prompt
+      const systemPrompt = threadStore.currentSystemPrompt
+      if (systemPrompt && injectedMessages.length > 0 && injectedMessages[0].role === 'system') {
+        injectedMessages[0].content += `\n\n---\n\n[Thread System Prompt]\n${systemPrompt}`
+      } else if (systemPrompt) {
+        injectedMessages.unshift({ role: 'system' as const, content: systemPrompt })
+      }
+
+      // Prepare messages - filter out the streaming assistant message we just created
+      const messagesForAPI = activeBranchMessages.filter(m => m.id !== assistantMessageId)
+      const userConversationMessages = prepareMessagesForAPI(messagesForAPI)
+
+      const conversationMessages: APIMessage[] = [
+        ...injectedMessages,
+        ...userConversationMessages
+      ]
+
+      // Stream response (simplified - single turn for regeneration)
+      const requestBody: any = {
+        model: modelConfig.model,
+        messages: conversationMessages,
+        stream: true,
+      }
+
+      if (openaiTools.length > 0) {
+        requestBody.tools = openaiTools
+      }
+
+      const response = await fetch(`${apiKey.baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${resolvedApiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('No response body')
+      }
+
+      let buffer = ''
+      let fullText = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunkText = decoder.decode(value, { stream: true })
+        buffer += chunkText
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') break
+
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices?.[0]?.delta
+
+              if (delta?.content) {
+                fullText += delta.content
+                store.updateMessageById(assistantMessageId, {
+                  content: fullText,
+                })
+              }
+            } catch {
+              // Skip unparseable lines
+            }
+          }
+        }
+      }
+
+      // Finish generation
+      store.updateMessageById(assistantMessageId, {
+        content: fullText,
+        isStreaming: false,
+      })
+      store.finishGeneration()
+    } catch (error) {
+      console.error('[useStreamingChat] Regeneration error:', error)
+
+      let errorMessage = 'An error occurred.'
+      if (error instanceof Error) {
+        if (error.message.includes('abort')) {
+          errorMessage = 'Stopped.'
+        } else {
+          errorMessage = 'Connection failed. Check your network.'
+        }
+      }
+
+      store.updateMessageById(assistantMessageId, {
+        content: errorMessage,
+        isStreaming: false,
+      })
+      store.finishGeneration()
+    }
+  }, [modelConfig, openaiTools, mcpServers, threadStore.currentSystemPrompt, store])
 
   return {
     messages: store.messages,
@@ -641,6 +899,7 @@ export function useStreamingChat(
     stopGeneration,
     clearChat,
     regenerate,
+    editUserMessage,
     addAttachment: store.addAttachment,
     removeAttachment: store.removeAttachment,
   }
