@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import JSON5 from "json5"
 import {
   Dialog,
   DialogContent,
@@ -133,7 +134,7 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
   // Parse MCP server configuration from JSON
   const parseServerConfig = (text: string): Omit<MCPServer, 'id' | 'state' | 'connectedAt'> | null => {
     try {
-      const parsed = JSON.parse(text)
+      const parsed = JSON5.parse(text)
       const mcpServers = parsed.mcpServers
 
       if (!mcpServers || typeof mcpServers !== 'object') {
@@ -188,7 +189,7 @@ export function MCPDialog({ open, onOpenChange, server, onSave }: MCPDialogProps
 
     // Basic JSON validation
     try {
-      const parsed = JSON.parse(text)
+      const parsed = JSON5.parse(text)
       const hasMcpServers = parsed.mcpServers && typeof parsed.mcpServers === 'object'
 
       if (!hasMcpServers) {
