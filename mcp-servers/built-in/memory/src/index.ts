@@ -124,7 +124,7 @@ class MemoryServer {
       return {
         tools: [
         {
-          name: 'memory_create',
+          name: 'create',
           description: 'Create a new note in the memory vault. The note is created freely; consider adding [[wiki-links]] to reference other notes and build the knowledge graph.',
           inputSchema: {
             type: 'object',
@@ -147,7 +147,7 @@ class MemoryServer {
           }
         },
         {
-          name: 'memory_read',
+          name: 'read',
           description: 'Read a note from the memory vault. Use the path (e.g., "folder/note") for unique identification.',
           inputSchema: {
             type: 'object',
@@ -161,7 +161,7 @@ class MemoryServer {
           }
         },
         {
-          name: 'memory_edit',
+          name: 'edit',
           description: 'Edit a portion of a note by finding and replacing text. Use wikilink references [[Note Title]] to maintain knowledge graph connections.',
           inputSchema: {
             type: 'object',
@@ -176,7 +176,7 @@ class MemoryServer {
           }
         },
         {
-          name: 'memory_delete',
+          name: 'delete',
           description: 'Delete a note from the vault',
           inputSchema: {
             type: 'object',
@@ -187,7 +187,7 @@ class MemoryServer {
           }
         },
         {
-          name: 'memory_list',
+          name: 'list',
           description: 'List all notes in the vault or a specific folder',
           inputSchema: {
             type: 'object',
@@ -197,7 +197,7 @@ class MemoryServer {
           }
         },
         {
-          name: 'memory_search',
+          name: 'search',
           description: 'Search notes by content, title, path, or tags. Returns results with path for unique identification.',
           inputSchema: {
             type: 'object',
@@ -216,7 +216,7 @@ class MemoryServer {
           }
         },
         {
-          name: 'memory_get_root',
+          name: 'get_root',
           description: 'Get the root index note (entry point of the knowledge graph)',
           inputSchema: {
             type: 'object',
@@ -241,7 +241,7 @@ class MemoryServer {
 
       try {
         switch (name) {
-          case 'memory_create': {
+          case 'create': {
             const note = await this.memoryManager.createNote(
               args.title as string,
               args.content as string,
@@ -276,7 +276,7 @@ class MemoryServer {
             };
           }
 
-          case 'memory_read': {
+          case 'read': {
             const note = await this.memoryManager.readNote(args.id as string);
             if (!note) {
               throw new McpError(
@@ -294,7 +294,7 @@ class MemoryServer {
             };
           }
 
-          case 'memory_edit': {
+          case 'edit': {
             const note = await this.memoryManager.editNote(
               args.id as string,
               args.old_content as string,
@@ -353,7 +353,7 @@ class MemoryServer {
             };
           }
 
-          case 'memory_delete': {
+          case 'delete': {
             const success = await this.memoryManager.deleteNote(args.id as string);
             return {
               content: [
@@ -365,7 +365,7 @@ class MemoryServer {
             };
           }
 
-          case 'memory_list': {
+          case 'list': {
             const notes = await this.memoryManager.listNotes(args.folder as string | undefined);
             return {
               content: [
@@ -387,7 +387,7 @@ class MemoryServer {
             };
           }
 
-          case 'memory_search': {
+          case 'search': {
             const query = args.query as string | string[];
             const queries = Array.isArray(query) ? query : [query];
 
@@ -428,7 +428,7 @@ class MemoryServer {
             };
           }
 
-          case 'memory_get_root': {
+          case 'get_root': {
             const rootNote = await this.memoryManager.getRootNote();
             if (!rootNote) {
               throw new McpError(
@@ -469,12 +469,12 @@ class MemoryServer {
       return {
         prompts: [
           {
-            name: 'tool_call:memory_get_root',
+            name: 'tool_call:get_root',
             description: 'Simulated tool call to retrieve the memory vault root note',
           },
           {
-            name: 'tool_result:memory_get_root',
-            description: 'Result of the memory_get_root tool call - shows vault structure and entry points',
+            name: 'tool_result:get_root',
+            description: 'Result of the get_root tool call - shows vault structure and entry points',
           }
         ]
       };
@@ -485,11 +485,11 @@ class MemoryServer {
 
       const { name } = request.params;
 
-      if (name === 'tool_call:memory_get_root') {
+      if (name === 'tool_call:get_root') {
         // Return structured tool call format for parsing by injection system
         const toolCallData = {
           type: 'tool_call',
-          tool_name: 'memory_get_root',
+          tool_name: 'get_root',
           arguments: {}
         };
 
@@ -506,7 +506,7 @@ class MemoryServer {
         };
       }
 
-      if (name === 'tool_result:memory_get_root') {
+      if (name === 'tool_result:get_root') {
         try {
           // At this point, ensureInitialized() has guaranteed that MemoryManager is ready
           const rootNote = await this.memoryManager.getRootNote();

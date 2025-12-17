@@ -67,7 +67,7 @@ async function main() {
         {
           name: 'read',
           description:
-            'Read file contents with automatic encoding detection. Supports text and binary files (images returned as base64).',
+            'Read file contents with automatic encoding detection. Supports text files, binary/images (base64), and documents (PDF, DOCX, PPTX, RTF, EPUB) with automatic text extraction. Uses same limits as Claude Code: 2000 lines max, 2000 chars/line.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -83,6 +83,14 @@ async function main() {
               asBase64: {
                 type: 'boolean',
                 description: 'Return binary/image files as base64 (default: true for images)',
+              },
+              offset: {
+                type: 'number',
+                description: 'Number of lines to skip from the beginning (default: 0)',
+              },
+              limit: {
+                type: 'number',
+                description: 'Maximum number of lines to return (default: 2000)',
               },
             },
             required: ['path'],

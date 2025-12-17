@@ -19,7 +19,12 @@
     "chardet": "^2.0.0",
     "iconv-lite": "^0.6.3",
     "file-type": "^19.6.0",
-    "tree-kill": "^1.2.2"
+    "tree-kill": "^1.2.2",
+    "unpdf": "^0.12.0",
+    "mammoth": "^1.8.0",
+    "node-pptx-parser": "^1.0.1",
+    "rtf-parser": "^1.3.3",
+    "epub2": "^3.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
