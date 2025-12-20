@@ -155,7 +155,7 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2 }}
-              className={cn('mx-2 space-y-1', hasContent && 'mt-1 mb-1')}
+              className={cn('mx-2 space-y-1', hasContent && 'mb-3')}
             >
               {displayToolCalls.map((toolCall) => (
                 <ToolCallDisplay

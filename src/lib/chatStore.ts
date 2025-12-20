@@ -65,6 +65,7 @@ interface ChatState {
   // State
   messages: ChatMessage[]
   isGenerating: boolean
+  generationId: string | null // Unique ID for current generation session
   currentStreamingText: string
   pendingAttachments: MessageAttachment[]
   abortController: AbortController | null
@@ -74,9 +75,9 @@ interface ChatState {
   updateLastMessage: (content: string) => void
   updateMessageById: (id: string, updates: Partial<ChatMessage>) => boolean // Returns success
   setStreamingText: (text: string) => void
-  startGeneration: () => void
+  startGeneration: () => string // Returns generation ID
   stopGeneration: () => void
-  finishGeneration: () => void
+  finishGeneration: (generationId?: string) => void // Only finishes if ID matches (or no ID provided for backwards compat)
   addAttachment: (attachment: MessageAttachment) => void
   removeAttachment: (id: string) => void
   clearAttachments: () => void
@@ -95,6 +96,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Initial state
   messages: [],
   isGenerating: false,
+  generationId: null,
   currentStreamingText: '',
   pendingAttachments: [],
   abortController: null,
@@ -161,9 +163,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ currentStreamingText: text })
   },
 
-  // Start generation
+  // Start generation - returns unique generation ID
   startGeneration: () => {
-    set({ isGenerating: true, currentStreamingText: '' })
+    const newGenerationId = `gen_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    set({ isGenerating: true, generationId: newGenerationId, currentStreamingText: '' })
+    return newGenerationId
   },
 
   // Stop generation (user cancellation)
@@ -185,7 +189,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       return m
     })
-    set({ messages: updatedMessages, isGenerating: false, currentStreamingText: '', abortController: null })
+    set({ messages: updatedMessages, isGenerating: false, generationId: null, currentStreamingText: '', abortController: null })
   },
 
   // Finish generation (normal completion)
